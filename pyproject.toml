@@ -1,0 +1,16 @@
+[project]
+name = "wanxiangtai-dashboard"
+version = "0.1.0"
+description = "Automated Wanxiangtai report downloader and static advertising dashboard publisher."
+requires-python = ">=3.10"
+dependencies = [
+  "pandas>=2.2",
+  "openpyxl>=3.1",
+  "flask>=3.0",
+  "flask-cors>=4.0",
+  "numpy>=1.26",
+  "playwright>=1.45",
+]
+
+[tool.compileall]
+quiet = 1
