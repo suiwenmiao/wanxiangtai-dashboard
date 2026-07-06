@@ -34,7 +34,7 @@ deploy:
 	$(PYTHON) automation/deploy_static.py --commit --push
 
 daily:
-	AUTO_DEPLOY=1 $(PYTHON) automation/run_daily.py
+	AUTO_DEPLOY=1 $(PYTHON) automation/run_daily.py loop
 
 preview:
 	cd frontend && CI=true $(PNPM) preview

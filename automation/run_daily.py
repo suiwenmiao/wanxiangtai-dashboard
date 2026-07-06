@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-每天上午9点自动运行万相台报表下载
+每天上午8:30自动运行万相台报表下载
 使用方法：
-  python3 run_daily.py &
+  python3 automation/run_daily.py once
+  python3 automation/run_daily.py loop
   或设置系统cron：
-  0 9 * * * cd /full/path && python3 wanxiangtai_download.py download >> /tmp/alimama_cron.log 2>&1
+  30 8 * * * cd /full/path && AUTO_DEPLOY=1 python3 automation/run_daily.py once >> /tmp/alimama_cron.log 2>&1
 """
 
 import subprocess
@@ -21,6 +22,8 @@ PYTHON = sys.executable
 DOWNLOAD_SCRIPT = SCRIPT_DIR / "wanxiangtai_download.py"
 DEPLOY_SCRIPT = SCRIPT_DIR / "deploy_static.py"
 LOG_FILE = DAILY_LOG_FILE
+RUN_HOUR = 8
+RUN_MINUTE = 30
 
 
 def log(msg):
@@ -61,7 +64,7 @@ def run_deploy():
     """生成静态站点并推送到 GitHub，触发 GitHub Pages 部署"""
     if not AUTO_DEPLOY:
         log("AUTO_DEPLOY 未开启，跳过线上部署。需要自动部署时使用: AUTO_DEPLOY=1 python3 automation/run_daily.py")
-        return
+        return True
 
     log("开始生成并发布静态看板...")
     try:
@@ -79,37 +82,48 @@ def run_deploy():
         if result.stderr:
             for line in result.stderr.strip().split("\n")[-10:]:
                 log(f"  [deploy stderr] {line}")
+        return result.returncode == 0
     except Exception as e:
         log(f"运行部署脚本失败: {e}")
+        return False
 
 
-def seconds_until_next_9am():
-    """计算距离明天上午9点还有多少秒"""
+def seconds_until_next_run():
+    """计算距离下次自动运行时间还有多少秒"""
     now = datetime.now()
-    # 今天的9点
-    today_9am = now.replace(hour=9, minute=0, second=0, microsecond=0)
-    # 如果现在还没到今天9点，就今天9点运行
-    if now < today_9am:
-        target = today_9am
+    today_run_at = now.replace(hour=RUN_HOUR, minute=RUN_MINUTE, second=0, microsecond=0)
+    if now < today_run_at:
+        target = today_run_at
     else:
-        # 否则明天9点运行
-        target = today_9am + timedelta(days=1)
+        target = today_run_at + timedelta(days=1)
     seconds = (target - now).total_seconds()
     return seconds, target
 
 
 def main():
+    mode = sys.argv[1].lower() if len(sys.argv) > 1 else "once"
     log("=== 万相台报表每日下载服务启动 ===")
+    log(f"运行模式: {mode}")
     log(f"脚本目录: {SCRIPT_DIR}")
-    log(f"下次运行时间将显示在日志中")
 
-    # 先运行一次
-    if run_download():
-        run_deploy()
+    download_ok = run_download()
+    deploy_ok = True
+    if download_ok:
+        deploy_ok = run_deploy()
 
-    # 然后每天9点运行
+    if mode == "once":
+        log("单次任务完成，退出。")
+        sys.exit(0 if download_ok and deploy_ok else 1)
+        return
+
+    if mode != "loop":
+        log(f"未知运行模式: {mode}，可用模式: once | loop")
+        return
+
+    log("进入常驻循环模式，下次运行时间将显示在日志中")
+    # 然后每天 8:30 运行
     while True:
-        seconds, target = seconds_until_next_9am()
+        seconds, target = seconds_until_next_run()
         log(f"下次运行时间: {target.strftime('%Y-%m-%d %H:%M:%S')} (约{int(seconds/60)}分钟后)")
         time.sleep(seconds)
         if run_download():

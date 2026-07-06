@@ -80,6 +80,21 @@ def get_report_date():
     return (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
 
+def big_table_has_date(report_date: str) -> bool:
+    """Return whether the accumulated workbook already contains report_date."""
+    try:
+        import pandas as pd
+
+        if not BIG_TABLE_PATH.exists():
+            return False
+        df_dates = pd.read_excel(BIG_TABLE_PATH, sheet_name=SHEET_NAME, usecols=["日期"])
+        dates = pd.to_datetime(df_dates["日期"], errors="coerce").dt.strftime("%Y-%m-%d")
+        return bool((dates == report_date).any())
+    except Exception as e:
+        log(f"[WARN] 检查大表日期失败: {e}")
+        return False
+
+
 def is_login_page(url, title=""):
     """判断当前是否在登录页"""
     u = url.lower()
@@ -197,8 +212,17 @@ async def do_download():
     desktop_path = REPORT_DIR / desktop_filename
 
     if desktop_path.exists():
-        log(f"目标已存在: {desktop_filename}，跳过下载")
-        return
+        if big_table_has_date(report_date):
+            log(f"目标已存在且大表已包含 {report_date}: {desktop_filename}，跳过下载")
+            return True
+        log(f"目标文件已存在，但大表尚未包含 {report_date}，删除后重新下载: {desktop_filename}")
+        try:
+            desktop_path.unlink()
+            for stale in REPORT_DIR.glob(f"万相台商品报表_{report_date}.*"):
+                if stale.exists():
+                    stale.unlink()
+        except Exception as e:
+            log(f"[WARN] 清理旧报表文件失败: {e}")
 
     headed = os.environ.get("HEADED", "0") == "1"
     log(f"报表日期: {report_date}")
@@ -229,7 +253,7 @@ async def do_download():
                 log("[ERROR] 登录态已过期！请重新运行 login 模式扫码登录")
                 await page.screenshot(path=str(SCREENSHOT_DIR / "login_expired.png"))
                 await browser.close()
-                return
+                return False
             log(f"已登录 | URL: {url} | 标题: {title}")
 
             await page.screenshot(path=str(SCREENSHOT_DIR / "01_item_report.png"))
@@ -261,7 +285,7 @@ async def do_download():
                     log(f"[ERROR] 无法找到'下载报表'按钮: {e2}")
                     await page.screenshot(path=str(SCREENSHOT_DIR / "no_download_btn.png"))
                     await browser.close()
-                    return
+                    return False
 
             await asyncio.sleep(5)
             await page.screenshot(path=str(SCREENSHOT_DIR / "02_dialog.png"))
@@ -292,7 +316,7 @@ async def do_download():
                 log("[ERROR] 未找到'确定'按钮")
                 await page.screenshot(path=str(SCREENSHOT_DIR / "no_confirm_btn.png"))
                 await browser.close()
-                return
+                return False
 
             await asyncio.sleep(3)
             log("步骤4完成，准备截图...")
@@ -329,45 +353,44 @@ async def do_download():
             log(f"当前URL: {page.url}")
             await page.screenshot(path=str(SCREENSHOT_DIR / "04_dl_list.png"))
 
-            # ========== 步骤6: 等待任务"生成成功" ==========
-            # 任务名包含当天日期（创建日期），我们刚才创建的任务名格式为
-            # "商品报表_YYYYMMDD_HHMMSS"，创建日期 = report_date 创建的日期
-            # 简化策略：等待页面顶部第一行的"生成成功"状态
+            # ========== 步骤6: 等待目标任务"生成成功" ==========
+            # 任务名包含当天日期（创建日期），格式通常为 商品报表_YYYYMMDD_HHMMSS。
+            # 只检查目标任务行，避免误判旧任务已生成成功。
             log(f"\n[步骤6] 等待任务生成（最多5分钟）...")
-            today_str = datetime.now().strftime("%Y%m%d")
-            task_found = False
             task_ready = False
             max_wait = 300  # 5分钟
             check_interval = 5
             for i in range(max_wait // check_interval):
                 try:
-                    # 查找第一行的状态
-                    status_text = await page.evaluate("""() => {
-                        // 查找包含"生成"的状态文本
-                        const allText = document.body.innerText;
-                        if (allText.includes('生成成功')) {
-                            return 'success';
-                        }
-                        if (allText.includes('生成中') || allText.includes('排队中') || allText.includes('处理中')) {
-                            return 'pending';
-                        }
-                        if (allText.includes('生成失败')) {
-                            return 'failed';
-                        }
-                        return 'unknown';
-                    }""")
+                    status_result = await page.evaluate("""
+(targetPrefix) => {
+    const rows = Array.from(document.querySelectorAll('tr'));
+    for (const row of rows) {
+        const txt = row.textContent || '';
+        if (!txt.includes(targetPrefix)) continue;
+        if (txt.includes('生成成功')) return {status: 'success', text: txt.slice(0, 200)};
+        if (txt.includes('生成失败')) return {status: 'failed', text: txt.slice(0, 200)};
+        if (txt.includes('生成中') || txt.includes('排队中') || txt.includes('处理中')) {
+            return {status: 'pending', text: txt.slice(0, 200)};
+        }
+        return {status: 'found', text: txt.slice(0, 200)};
+    }
+    return {status: 'not_found'};
+}
+""", target_task_name_prefix)
                     elapsed = (i + 1) * check_interval
+                    status_text = status_result.get("status") if status_result else "unknown"
                     if status_text == "success":
                         log(f"任务已生成成功！耗时: {elapsed}秒")
                         task_ready = True
                         break
                     elif status_text == "failed":
-                        log("[ERROR] 任务生成失败")
+                        log(f"[ERROR] 目标任务生成失败: {status_result.get('text', '')}")
                         await page.screenshot(path=str(SCREENSHOT_DIR / "task_failed.png"))
                         break
                     else:
                         if elapsed % 30 == 0:
-                            log(f"任务生成中... 已等待 {elapsed}秒")
+                            log(f"目标任务状态: {status_text}，已等待 {elapsed}秒")
                 except Exception as e:
                     log(f"检查状态失败: {e}")
                 await asyncio.sleep(check_interval)
@@ -380,7 +403,7 @@ async def do_download():
                         pass
 
             if not task_ready:
-                log("[ERROR] 任务生成超时")
+                log(f"[ERROR] 目标任务({target_task_name_prefix})生成超时或未找到")
                 await page.screenshot(path=str(SCREENSHOT_DIR / "task_timeout.png"))
                 await browser.close()
                 return
@@ -404,71 +427,89 @@ async def do_download():
 
             page.on("download", lambda d: asyncio.create_task(handle_download(d)))
 
-            # 通过 JS 找到包含目标任务名的行，并点击该行的下载按钮
+            # 通过 JS 找到包含目标任务名的行。下载按钮是 hover 行后才出现的浮动按钮，
+            # 所以先把目标行滚动到视窗并移动鼠标到该行，再点击同一行高度上的"下载"按钮。
             # 使用 page.evaluate 传参，避免 f-string 嵌套大括号的转义问题
-            js_find_and_click = """
+            js_find_target_row = """
 (targetPrefix) => {
-    const allRows = document.querySelectorAll('tr');
-    // 1) 先找包含目标任务名前缀的行
+    const allRows = Array.from(document.querySelectorAll('tr'));
     for (const row of allRows) {
         const txt = (row.textContent || '');
         if (txt.includes(targetPrefix)) {
-            const btn = Array.from(row.querySelectorAll('button')).find(b => {
-                const t = (b.textContent || '').trim();
-                return t === '下载' || t.startsWith('下载');
-            });
-            if (btn && btn.offsetParent !== null) {
-                btn.scrollIntoView({block: 'center'});
-                btn.click();
-                return {found: true, via: 'task_name', text: btn.textContent.trim()};
-            }
-        }
-    }
-    // 2) 退而求其次：找第一个可见的"下载"按钮（最新任务在第一行）
-    for (const row of allRows) {
-        const btns = row.querySelectorAll('button');
-        for (const btn of btns) {
-            const t = (btn.textContent || '').trim();
-            if (t === '下载' || t.startsWith('下载')) {
-                if (btn.offsetParent !== null) {
-                    btn.scrollIntoView({block: 'center'});
-                    btn.click();
-                    return {found: true, via: 'first_visible', text: t};
-                }
-            }
+            row.scrollIntoView({block: 'center'});
+            const rect = row.getBoundingClientRect();
+            return {
+                found: true,
+                text: txt.slice(0, 200),
+                x: rect.left + 50,
+                y: rect.top + rect.height / 2,
+                top: rect.top,
+                bottom: rect.bottom
+            };
         }
     }
     return {found: false};
 }
 """
+            js_click_hover_download = """
+(rowBounds) => {
+    const candidates = Array.from(document.querySelectorAll('button, a, [role="button"]'))
+        .filter(el => {
+            const text = (el.textContent || '').trim();
+            if (!(text === '下载' || text.startsWith('下载'))) return false;
+            const rect = el.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return false;
+            const midY = rect.top + rect.height / 2;
+            return midY >= rowBounds.top - 4 && midY <= rowBounds.bottom + 64;
+        });
+    if (!candidates.length) {
+        const visibleDownloads = Array.from(document.querySelectorAll('button, a, [role="button"]'))
+            .map(el => {
+                const text = (el.textContent || '').trim();
+                const rect = el.getBoundingClientRect();
+                return {text, x: rect.left, y: rect.top, width: rect.width, height: rect.height};
+            })
+            .filter(item => item.text.includes('下载') && item.width > 0 && item.height > 0);
+        return {found: false, visibleDownloadCount: visibleDownloads.length, visibleDownloads};
+    }
+    candidates.sort((a, b) => {
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        return Math.abs((ar.top + ar.height / 2) - rowBounds.bottom) -
+            Math.abs((br.top + br.height / 2) - rowBounds.bottom);
+    });
+    const btn = candidates[0];
+    btn.scrollIntoView({block: 'center'});
+    btn.click();
+    return {found: true, text: (btn.textContent || '').trim()};
+}
+"""
             download_btn_clicked = False
             try:
-                result = await page.evaluate(js_find_and_click, target_task_name_prefix)
-                log(f"JS 点击结果: {result}")
+                target_row = await page.evaluate(js_find_target_row, target_task_name_prefix)
+                log(f"目标行查找结果: {target_row}")
+                if target_row and target_row.get("found"):
+                    await page.mouse.move(float(target_row["x"]), float(target_row["y"]))
+                    await asyncio.sleep(1)
+                    result = await page.evaluate(js_click_hover_download, {
+                        "top": target_row["top"],
+                        "bottom": target_row["bottom"],
+                    })
+                    log(f"目标行下载按钮点击结果: {result}")
+                else:
+                    result = {"found": False}
                 if result and result.get("found"):
                     download_btn_clicked = True
-                    log(f"已通过 JS 点击下载按钮(via {result.get('via')})")
+                    log("已点击目标任务的下载按钮")
                     await asyncio.sleep(3)
             except Exception as e:
                 log(f"JS 点击失败: {e}")
 
             if not download_btn_clicked:
-                # 备用方案：用 Playwright locator 点击第一行下载按钮
-                log("尝试备用方案：Playwright locator...")
-                try:
-                    btn = page.locator("button", has_text="下载").first
-                    await btn.click(timeout=5000, force=True)
-                    download_btn_clicked = True
-                    log("已通过 Playwright 点击下载按钮(备用)")
-                    await asyncio.sleep(3)
-                except Exception as e2:
-                    log(f"[ERROR] 备用方案也失败: {e2}")
-
-            if not download_btn_clicked:
                 log("[ERROR] 未找到刚创建任务的下载按钮")
                 await page.screenshot(path=str(SCREENSHOT_DIR / "no_dl_btn.png"))
                 await browser.close()
-                return
+                return False
 
             # ========== 步骤8: 等待文件下载 ==========
             log(f"\n[步骤8] 等待文件下载...")
@@ -520,12 +561,15 @@ async def do_download():
                         csv_to_append = desktop_path
 
                     if csv_to_append:
-                        append_to_big_table(str(csv_to_append), report_date)
+                        if not append_to_big_table(str(csv_to_append), report_date):
+                            raise RuntimeError("追加数据到大表失败，已停止后续流程")
                     else:
                         log("[WARN] 未找到解压后的CSV文件，跳过大表追加")
+                        raise RuntimeError("未找到解压后的CSV文件，已停止后续流程")
             except asyncio.TimeoutError:
                 log("[ERROR] 下载超时")
                 await page.screenshot(path=str(SCREENSHOT_DIR / "dl_timeout.png"))
+                return False
 
         except Exception as e:
             log(f"下载失败: {e}")
@@ -536,6 +580,8 @@ async def do_download():
             raise
         finally:
             await browser.close()
+
+    return True
 
 
 # ======================== 追加到大表 + 匹配品类 ========================
@@ -551,15 +597,30 @@ def append_to_big_table(csv_path, report_date_str):
 
     # 1. 读取新下载的CSV（万相台CSV是GBK编码）
     try:
-        df_new = pd.read_csv(csv_path, encoding="gbk", errors="replace")
+        df_new = pd.read_csv(csv_path, encoding="gbk", encoding_errors="replace")
     except Exception:
         try:
-            df_new = pd.read_csv(csv_path, encoding="utf-8-sig", errors="replace")
+            df_new = pd.read_csv(csv_path, encoding="utf-8-sig", encoding_errors="replace")
         except Exception as e:
             log(f"[ERROR] 读取CSV失败: {e}")
             return False
 
     log(f"新数据: {len(df_new)} 行, {len(df_new.columns)} 列")
+
+    if "日期" not in df_new.columns:
+        log("[ERROR] CSV 缺少日期列，跳过大表追加")
+        return False
+
+    df_new["日期"] = pd.to_datetime(df_new["日期"], errors="coerce").dt.strftime("%Y-%m-%d")
+    csv_dates = sorted(d for d in df_new["日期"].dropna().unique().tolist())
+    if report_date_str not in csv_dates:
+        max_date = csv_dates[-1] if csv_dates else "无有效日期"
+        log(
+            f"[ERROR] 下载报表未包含目标日期 {report_date_str}，"
+            f"当前报表最大日期为 {max_date}，跳过大表追加和前端更新"
+        )
+        return False
+    log(f"报表包含日期: {', '.join(csv_dates)}")
 
     # 2. 读取基础表（匹配品类/细类）
     try:
@@ -586,15 +647,15 @@ def append_to_big_table(csv_path, report_date_str):
         log("大表不存在，创建新表")
         df_big = pd.DataFrame()
 
-    # 5. 去重：删除大表中已有该日期的数据（防止重复追加）
+    # 5. 去重：删除大表中本次报表覆盖日期的数据（防止重复追加）
     if len(df_big) > 0 and "日期" in df_big.columns:
         # 统一日期格式为字符串比较
         df_big["日期"] = pd.to_datetime(df_big["日期"]).dt.strftime("%Y-%m-%d")
         before = len(df_big)
-        df_big = df_big[df_big["日期"] != report_date_str]
+        df_big = df_big[~df_big["日期"].isin(csv_dates)]
         removed = before - len(df_big)
         if removed > 0:
-            log(f"删除大表中已有的 {report_date_str} 数据: {removed} 行")
+            log(f"删除大表中已有的本次覆盖日期数据: {removed} 行")
 
     # 6. 追加新数据
     df_combined = pd.concat([df_big, df_new], ignore_index=True)
@@ -627,7 +688,8 @@ def main():
     if mode == "login":
         asyncio.run(do_login())
     elif mode == "download":
-        asyncio.run(do_download())
+        ok = asyncio.run(do_download())
+        sys.exit(0 if ok else 1)
     else:
         print(f"未知模式: {mode}")
         print("可用模式: login | download")

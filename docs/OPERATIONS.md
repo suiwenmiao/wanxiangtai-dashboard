@@ -11,7 +11,7 @@ make daily
 cron 示例：
 
 ```bash
-0 9 * * * cd /path/to/project && AUTO_DEPLOY=1 /path/to/python automation/run_daily.py >> /tmp/alimama_cron.log 2>&1
+30 8 * * * cd /path/to/project && AUTO_DEPLOY=1 /path/to/python automation/run_daily.py once >> /tmp/alimama_cron.log 2>&1
 ```
 
 ## 手动发布
