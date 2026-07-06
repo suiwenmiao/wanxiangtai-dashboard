@@ -15,6 +15,7 @@ const props = defineProps({
 
 const chartEl = ref(null);
 let chart;
+let observer;
 
 function render() {
   if (!chart && chartEl.value) {
@@ -32,10 +33,15 @@ watch(() => props.option, render, { deep: true });
 onMounted(() => {
   render();
   window.addEventListener("resize", resize);
+  if (window.ResizeObserver) {
+    observer = new ResizeObserver(() => resize());
+    if (chartEl.value) observer.observe(chartEl.value);
+  }
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", resize);
+  if (observer) observer.disconnect();
   if (chart) chart.dispose();
 });
 </script>
