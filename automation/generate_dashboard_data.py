@@ -1,130 +1,163 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""Generate dashboard JSON consumed by the Vue frontend."""
+"""Generate dashboard JSON — aggregates by category, sub-category, and subject."""
 
 from __future__ import annotations
-
 import json
 from datetime import datetime
-
 import pandas as pd
-
 from config import BIG_TABLE_PATH, FRONTEND_DATA_FILE, SHEET_NAME
 
-
 NUMERIC_COLS = [
-    "花费",
-    "总成交金额",
-    "直接成交金额",
-    "间接成交金额",
-    "总成交笔数",
-    "点击量",
-    "展现量",
-    "总购物车数",
-    "收藏宝贝数",
-    "总收藏加购数",
+    "花费", "总成交金额", "直接成交金额", "间接成交金额", "总成交笔数",
+    "点击量", "展现量", "总购物车数", "收藏宝贝数", "总收藏加购数",
 ]
 
 
-def load_and_aggregate() -> pd.DataFrame:
-    """Read the accumulated workbook and aggregate by date and category."""
+def load_data() -> pd.DataFrame:
     if not BIG_TABLE_PATH.exists():
         raise SystemExit(f"[ERROR] 未找到数据大表: {BIG_TABLE_PATH}")
-
     print(f"读取数据大表: {BIG_TABLE_PATH}")
     df = pd.read_excel(BIG_TABLE_PATH, sheet_name=SHEET_NAME)
     print(f"  原始行数: {len(df)}")
 
-    required = {"日期", "品类", "花费", "总成交金额", "直接成交金额", "总成交笔数", "点击量", "展现量"}
+    required = {"日期", "品类", "细类", "主体ID", "花费", "总成交金额"}
     missing = sorted(required - set(df.columns))
     if missing:
-        raise SystemExit(f"[ERROR] 数据大表缺少必要字段: {', '.join(missing)}")
+        raise SystemExit(f"[ERROR] 缺少必要字段: {', '.join(missing)}")
 
     df["日期"] = pd.to_datetime(df["日期"]).dt.strftime("%Y-%m-%d")
     df["品类"] = df["品类"].fillna("其他")
+    df["细类"] = df["细类"].fillna("其他")
 
     for col in NUMERIC_COLS:
         if col not in df.columns:
             df[col] = 0
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    return df
 
-    agg = (
-        df.groupby(["日期", "品类"], dropna=False)
-        .agg(
-            {
-                "花费": "sum",
-                "总成交金额": "sum",
-                "直接成交金额": "sum",
-                "间接成交金额": "sum",
-                "总成交笔数": "sum",
-                "点击量": "sum",
-                "展现量": "sum",
-                "总购物车数": "sum",
-                "收藏宝贝数": "sum",
-                "总收藏加购数": "sum",
+
+def build_records(df: pd.DataFrame) -> list[dict]:
+    agg = df.groupby(["日期", "品类"], dropna=False).agg({
+        "花费": "sum", "总成交金额": "sum", "直接成交金额": "sum",
+        "间接成交金额": "sum", "总成交笔数": "sum", "点击量": "sum",
+        "展现量": "sum", "总购物车数": "sum", "收藏宝贝数": "sum",
+        "总收藏加购数": "sum",
+    }).reset_index().sort_values(["日期", "品类"])
+    return [
+        {
+            "date": r["日期"], "category": r["品类"],
+            "cost": round(float(r["花费"]), 2),
+            "totalSales": round(float(r["总成交金额"]), 2),
+            "directSales": round(float(r["直接成交金额"]), 2),
+            "indirectSales": round(float(r["间接成交金额"]), 2),
+            "orders": int(r["总成交笔数"]), "clicks": int(r["点击量"]),
+            "impressions": int(r["展现量"]), "carts": int(r["总购物车数"]),
+            "favorites": int(r["收藏宝贝数"]), "favCart": int(r["总收藏加购数"]),
+        } for _, r in agg.iterrows()
+    ]
+
+
+def build_sub_category_records(df: pd.DataFrame) -> list[dict]:
+    agg = df.groupby(["日期", "品类", "细类"], dropna=False).agg({
+        "花费": "sum", "总成交金额": "sum", "直接成交金额": "sum",
+        "间接成交金额": "sum", "总成交笔数": "sum", "点击量": "sum",
+        "展现量": "sum", "总购物车数": "sum", "收藏宝贝数": "sum",
+        "总收藏加购数": "sum",
+    }).reset_index().sort_values(["日期", "品类", "细类"])
+    return [
+        {
+            "date": r["日期"], "category": r["品类"], "subCategory": r["细类"],
+            "cost": round(float(r["花费"]), 2),
+            "totalSales": round(float(r["总成交金额"]), 2),
+            "directSales": round(float(r["直接成交金额"]), 2),
+            "orders": int(r["总成交笔数"]), "clicks": int(r["点击量"]),
+            "impressions": int(r["展现量"]), "carts": int(r["总购物车数"]),
+        } for _, r in agg.iterrows()
+    ]
+
+
+def build_subjects(df: pd.DataFrame) -> list[dict]:
+    """Aggregate by subject, include scenario/plan breakdown."""
+    subjects_map = {}
+    for _, r in df.iterrows():
+        sid = str(r["主体ID"])
+        if sid == "nan":
+            continue
+        if sid not in subjects_map:
+            subjects_map[sid] = {
+                "subjectId": sid,
+                "subjectName": str(r.get("主体名称", "")),
+                "category": r["品类"], "subCategory": r["细类"],
+                "cost": 0, "totalSales": 0, "directSales": 0,
+                "orders": 0, "clicks": 0, "impressions": 0, "carts": 0,
+                "scenarios": {}
             }
-        )
-        .reset_index()
-        .sort_values(["日期", "品类"])
-    )
-
-    print(f"  聚合行数: {len(agg)}")
-    print(f"  日期范围: {agg['日期'].min()} ~ {agg['日期'].max()}")
-    print(f"  品类: {', '.join(sorted(agg['品类'].unique()))}")
-    return agg
-
-
-def to_records(agg: pd.DataFrame) -> list[dict]:
-    records = []
-    for _, row in agg.iterrows():
-        records.append(
-            {
-                "date": row["日期"],
-                "category": row["品类"],
-                "cost": round(float(row["花费"]), 2),
-                "totalSales": round(float(row["总成交金额"]), 2),
-                "directSales": round(float(row["直接成交金额"]), 2),
-                "indirectSales": round(float(row["间接成交金额"]), 2),
-                "orders": int(row["总成交笔数"]),
-                "clicks": int(row["点击量"]),
-                "impressions": int(row["展现量"]),
-                "carts": int(row["总购物车数"]),
-                "favorites": int(row["收藏宝贝数"]),
-                "favCart": int(row["总收藏加购数"]),
+        s = subjects_map[sid]
+        s["cost"] += r["花费"]; s["totalSales"] += r["总成交金额"]
+        s["directSales"] += r["直接成交金额"]; s["orders"] += r["总成交笔数"]
+        s["clicks"] += r["点击量"]; s["impressions"] += r["展现量"]
+        s["carts"] += r["总购物车数"]
+        scene_key = f"{r.get('场景名字','')}|{r.get('计划名字','')}"
+        if scene_key not in s["scenarios"]:
+            s["scenarios"][scene_key] = {
+                "scenario": str(r.get("场景名字", "")),
+                "planName": str(r.get("计划名字", "")),
+                "cost": 0, "totalSales": 0, "clicks": 0, "impressions": 0,
             }
-        )
-    return records
+        sc = s["scenarios"][scene_key]
+        sc["cost"] += r["花费"]; sc["totalSales"] += r["总成交金额"]
+        sc["clicks"] += r["点击量"]; sc["impressions"] += r["展现量"]
 
-
-def build_payload(agg: pd.DataFrame) -> dict:
-    records = to_records(agg)
-    dates = sorted(agg["日期"].unique().tolist())
-    categories = sorted(agg["品类"].unique().tolist())
-    return {
-        "generatedAt": datetime.now().isoformat(timespec="seconds"),
-        "dateMin": dates[0] if dates else None,
-        "dateMax": dates[-1] if dates else None,
-        "categories": categories,
-        "records": records,
-    }
+    result = []
+    for sid, s in subjects_map.items():
+        scenarios = sorted(s["scenarios"].values(), key=lambda x: -x["cost"])
+        for sc in scenarios:
+            sc["cost"] = round(sc["cost"], 2)
+            sc["totalSales"] = round(sc["totalSales"], 2)
+        result.append({
+            "subjectId": sid, "subjectName": s["subjectName"],
+            "category": s["category"], "subCategory": s["subCategory"],
+            "cost": round(s["cost"], 2),
+            "totalSales": round(s["totalSales"], 2),
+            "directSales": round(s["directSales"], 2),
+            "orders": int(s["orders"]), "clicks": int(s["clicks"]),
+            "impressions": int(s["impressions"]), "carts": int(s["carts"]),
+            "scenarios": scenarios,
+        })
+    result.sort(key=lambda x: -x["cost"])
+    return result
 
 
 def main() -> None:
     print("=" * 50)
-    print("生成 Vue 看板数据")
+    print("生成 Vue 看板数据（含细类 + 主体）")
     print("=" * 50)
-    agg = load_and_aggregate()
-    payload = build_payload(agg)
+    df = load_data()
+
+    records = build_records(df)
+    subCategoryRecords = build_sub_category_records(df)
+    subjects = build_subjects(df)
+
+    payload = {
+        "generatedAt": datetime.now().isoformat(timespec="seconds"),
+        "dateMin": records[0]["date"] if records else None,
+        "dateMax": records[-1]["date"] if records else None,
+        "categories": sorted(df["品类"].unique().tolist()),
+        "records": records,
+        "subCategoryRecords": subCategoryRecords,
+        "subjects": subjects,
+    }
 
     FRONTEND_DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
     FRONTEND_DATA_FILE.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
-
     size_kb = FRONTEND_DATA_FILE.stat().st_size / 1024
     print(f"已生成: {FRONTEND_DATA_FILE}")
-    print(f"文件大小: {size_kb:.1f} KB")
+    print(f"  记录: {len(records)}")
+    print(f"  细类记录: {len(subCategoryRecords)}")
+    print(f"  主体: {len(subjects)}")
+    print(f"  文件大小: {size_kb:.1f} KB")
 
 
 if __name__ == "__main__":

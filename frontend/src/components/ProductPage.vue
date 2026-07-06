@@ -1,133 +1,150 @@
 <template>
-  <section>
-    <section class="kpi-grid">
-      <article v-for="item in productKpi" :key="item.label" class="kpi-card">
-        <span class="kpi-label">{{ item.label }}</span>
-        <strong>{{ item.value }}</strong>
-        <small>{{ item.hint }}</small>
-      </article>
-    </section>
+  <div>
+    <!-- KPI -->
+    <div class="kpi-row">
+      <div class="kpi-card cost">
+        <div class="kpi-label">总花费</div>
+        <div class="kpi-value">¥{{ formatMoney(subjTotals.cost) }}</div>
+      </div>
+      <div class="kpi-card sales">
+        <div class="kpi-label">总成交</div>
+        <div class="kpi-value">¥{{ formatMoney(subjTotals.totalSales) }}</div>
+      </div>
+      <div class="kpi-card troi">
+        <div class="kpi-label">总 ROI</div>
+        <div class="kpi-value">{{ subjTotals.totalRoi.toFixed(2) }}</div>
+      </div>
+      <div class="kpi-card click">
+        <div class="kpi-label">总点击</div>
+        <div class="kpi-value">{{ subjTotals.clicks.toLocaleString() }}</div>
+      </div>
+      <div class="kpi-card cvr">
+        <div class="kpi-label">转化率</div>
+        <div class="kpi-value">{{ formatPercent(subjTotals.cvr) }}</div>
+      </div>
+    </div>
 
-    <section class="chart-grid">
-      <article class="panel">
-        <div class="panel-head"><h2>品类花费 vs 成交</h2></div>
-        <EChart :option="scatterOption" />
-      </article>
-      <article class="panel">
-        <div class="panel-head"><h2>各品类 ROI 对比</h2></div>
-        <EChart :option="barRoiOption" />
-      </article>
-      <article class="panel wide">
-        <div class="panel-head"><h2>品类每日花费热力</h2></div>
-        <EChart :option="heatOption" />
-      </article>
-    </section>
-
-    <section class="panel table-panel">
-      <div class="panel-head"><h2>数据明细</h2></div>
+    <!-- Subjects Table -->
+    <div class="panel-table">
+      <div class="chart-title">主体推广数据 ({{ displaySubjects.length }}条)</div>
       <div class="table-wrap">
         <table>
           <thead>
-            <tr>
-              <th>日期</th><th>品类</th><th>花费</th><th>总成交</th>
-              <th>总 ROI</th><th>点击</th><th>展现</th><th>转化率</th><th>收藏加购</th>
-            </tr>
+            <tr><th>主体ID</th><th>主体名称</th><th>品类</th><th>细类</th><th class="num">花费</th><th class="num">总成交</th>
+              <th class="num">总 ROI</th><th class="num">点击</th><th class="num">展现</th><th></th></tr>
           </thead>
           <tbody>
-            <tr v-for="(row, i) in detailRows" :key="i">
-              <td>{{ row.date }}</td>
-              <td>{{ row.category }}</td>
-              <td>¥{{ formatMoney(row.cost) }}</td>
-              <td>¥{{ formatMoney(row.totalSales) }}</td>
-              <td :class="roiClass(row.totalRoi)">{{ row.totalRoi.toFixed(2) }}</td>
-              <td>{{ row.clicks.toLocaleString() }}</td>
-              <td>{{ row.impressions.toLocaleString() }}</td>
-              <td>{{ formatPercent(row.cvr) }}</td>
-              <td>{{ row.favCart != null ? row.favCart.toLocaleString() : '-' }}</td>
+            <tr v-for="s in displaySubjects" :key="s.subjectId">
+              <td class="subject-click" @click="toggleDetail(s.subjectId)">{{ s.subjectId }}</td>
+              <td>{{ s.subjectName }}</td>
+              <td>{{ s.category }}</td>
+              <td>{{ s.subCategory }}</td>
+              <td class="num">¥{{ formatMoney(s.cost) }}</td>
+              <td class="num">¥{{ formatMoney(s.totalSales) }}</td>
+              <td :class="['num', roiClass(s.totalRoi)]">{{ s.totalRoi.toFixed(2) }}</td>
+              <td class="num">{{ s.clicks.toLocaleString() }}</td>
+              <td class="num">{{ s.impressions.toLocaleString() }}</td>
+              <td><button class="btn-quick" @click="toggleDetail(s.subjectId)">{{ expandedId === s.subjectId ? '收起' : '查看' }}</button></td>
             </tr>
-            <tr v-if="detailRows.length === 0">
-              <td colspan="9" class="empty">当前筛选条件下暂无数据</td>
+            <tr v-if="displaySubjects.length === 0">
+              <td colspan="10" class="empty">暂无数据</td>
             </tr>
           </tbody>
         </table>
       </div>
-    </section>
-  </section>
+    </div>
+
+    <!-- Detail Panel -->
+    <div class="panel-table" v-if="detailSubject">
+      <div class="chart-title">
+        主体 {{ detailSubject.subjectId }} — {{ detailSubject.subjectName }}
+      </div>
+      <div style="font-size:13px;color:#888;margin-bottom:12px;padding-left:10px;">
+        品类: {{ detailSubject.category }} · 细类: {{ detailSubject.subCategory }} · 总花费: ¥{{ formatMoney(detailSubject.cost) }}
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>推广场景</th><th>计划名称</th><th class="num">花费</th><th class="num">总成交</th><th class="num">ROI</th><th class="num">点击</th><th class="num">展现</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="(sc, i) in detailSubject.scenarios" :key="i">
+              <td>{{ sc.scenario }}</td>
+              <td>{{ sc.planName }}</td>
+              <td class="num">¥{{ formatMoney(sc.cost) }}</td>
+              <td class="num">¥{{ formatMoney(sc.totalSales) }}</td>
+              <td :class="['num', roiClass(sc.totalRoi)]">{{ sc.totalRoi.toFixed(2) }}</td>
+              <td class="num">{{ sc.clicks.toLocaleString() }}</td>
+              <td class="num">{{ sc.impressions.toLocaleString() }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
-import { computed } from "vue";
-import EChart from "./EChart.vue";
-import { formatMoney, formatPercent, sumMetrics } from "../utils/metrics";
+import { computed, ref } from "vue";
+import { formatMoney, formatPercent } from "../utils/metrics";
+import payload from "../data/dashboard-data.json";
 
-const props = defineProps({ filtered: { type: Array, required: true } });
-const totals = computed(() => sumMetrics(props.filtered));
-
-const productKpi = computed(() => [
-  { label: "总花费", value: `¥${formatMoney(totals.value.cost)}`, hint: "所有筛选记录合计" },
-  { label: "总成交", value: `¥${formatMoney(totals.value.totalSales)}`, hint: "直接与间接成交合计" },
-  { label: "总 ROI", value: totals.value.totalRoi.toFixed(2), hint: "总成交 / 花费" },
-  { label: "总点击", value: totals.value.clicks.toLocaleString(), hint: "筛选周期内总点击量" },
-  { label: "总展现", value: totals.value.impressions.toLocaleString(), hint: "筛选周期内总展现量" }
-]);
-
-const detailRows = computed(() => {
-  const rows = [...props.filtered];
-  rows.sort((a, b) => b.date.localeCompare(a.date) || b.cost - a.cost);
-  return rows;
+const props = defineProps({
+  filtered: { type: Array, required: true }
 });
 
-function roiClass(v) { return v >= 3 ? "roi-good" : v < 1 ? "roi-risk" : ""; }
+const expandedId = ref(null);
 
-const categoryAgg = computed(() => {
-  const map = {};
-  for (const r of props.filtered) {
-    if (!map[r.category]) map[r.category] = { cost: 0, sales: 0, count: 0 };
-    map[r.category].cost += r.cost;
-    map[r.category].sales += r.totalSales;
-    map[r.category].count++;
+// Show subjects filtered by category only, ignore date filter
+const displaySubjects = computed(() => {
+  // Get selected categories from the filtered data
+  const cats = new Set(props.filtered.map(r => r.category));
+  const hasAllCats = cats.size >= payload.categories.length;
+
+  let result = payload.subjects;
+  // If not all categories are selected, filter by category
+  if (!hasAllCats && cats.size > 0) {
+    result = result.filter(s => cats.has(s.category));
   }
-  return Object.entries(map)
-    .map(([name, v]) => ({ name, cost: v.cost, sales: v.sales, roi: v.sales / (v.cost || 1) }))
-    .sort((a, b) => b.cost - a.cost);
+
+  // Recalculate totalRoi for each subject
+  return result.map(s => ({
+    ...s,
+    totalRoi: s.cost > 0 ? s.totalSales / s.cost : 0
+  })).sort((a, b) => b.cost - a.cost).slice(0, 100);
 });
 
-const scatterOption = computed(() => ({
-  tooltip: { trigger: "item", formatter: (p) => `${p.name}<br/>花费: ¥${formatMoney(p.value[0])}<br/>成交: ¥${formatMoney(p.value[1])}` },
-  xAxis: { type: "value", name: "花费", axisLabel: { formatter: (v) => formatMoney(v) } },
-  yAxis: { type: "value", name: "成交金额", axisLabel: { formatter: (v) => formatMoney(v) } },
-  series: [{
-    type: "scatter", symbolSize: 16,
-    data: categoryAgg.value.map((c) => ({ value: [Number(c.cost.toFixed(2)), Number(c.sales.toFixed(2))], name: c.name })),
-    itemStyle: { color: "#3b82c4" },
-    label: { show: true, formatter: "{b}", position: "right", fontSize: 11 }
-  }]
-}));
-
-const barRoiOption = computed(() => ({
-  tooltip: { trigger: "axis" },
-  grid: { left: 60, right: 20, top: 10, bottom: 40 },
-  xAxis: { type: "category", data: categoryAgg.value.map((c) => c.name), axisLabel: { rotate: 25 } },
-  yAxis: { type: "value", name: "ROI" },
-  series: [{ type: "bar", data: categoryAgg.value.map((c) => Number(c.roi.toFixed(2))), itemStyle: { color: "#168f7a" } }]
-}));
-
-const heatOption = computed(() => {
-  const cats = [...new Set(props.filtered.map((r) => r.category))].sort();
-  const dates = [...new Set(props.filtered.map((r) => r.date))].sort();
-  const map = {};
-  for (const r of props.filtered) map[r.date + "|" + r.category] = r.cost;
-  const data = [];
-  for (let i = 0; i < dates.length; i++)
-    for (let j = 0; j < cats.length; j++)
-      data.push([i, j, map[dates[i] + "|" + cats[j]] || 0]);
+const subjTotals = computed(() => {
+  const rows = displaySubjects.value;
+  const total = { cost: 0, totalSales: 0, directSales: 0, orders: 0, clicks: 0, impressions: 0, carts: 0 };
+  for (const s of rows) {
+    total.cost += s.cost; total.totalSales += s.totalSales;
+    total.directSales += s.directSales; total.orders += s.orders;
+    total.clicks += s.clicks; total.impressions += s.impressions; total.carts += s.carts;
+  }
   return {
-    tooltip: { position: "top", formatter: (p) => `${dates[p.data[0]]} ${cats[p.data[1]]}<br/>花费: ¥${formatMoney(p.data[2])}` },
-    grid: { left: 60, right: 60, top: 10, bottom: 40 },
-    xAxis: { type: "category", data: dates, splitArea: { show: true }, axisLabel: { rotate: 30, fontSize: 10 } },
-    yAxis: { type: "category", data: cats, splitArea: { show: true } },
-    visualMap: { min: 0, max: Math.max(...data.map((d) => d[2]) || [1]), calculable: true, orient: "vertical", right: 0, top: 10, bottom: 40 },
-    series: [{ type: "heatmap", data, label: { show: false }, emphasis: { itemStyle: { shadowBlur: 10 } } }]
+    ...total,
+    totalRoi: total.cost > 0 ? total.totalSales / total.cost : 0,
+    cvr: total.clicks > 0 ? total.orders / total.clicks : 0,
   };
 });
+
+const detailSubject = computed(() => {
+  if (!expandedId.value) return null;
+  const s = payload.subjects.find(x => x.subjectId === expandedId.value);
+  if (!s) return null;
+  return {
+    ...s,
+    scenarios: s.scenarios.map(sc => ({
+      ...sc,
+      totalRoi: sc.cost > 0 ? sc.totalSales / sc.cost : 0,
+    }))
+  };
+});
+
+function toggleDetail(id) {
+  expandedId.value = expandedId.value === id ? null : id;
+}
+
+function roiClass(v) { return v >= 3 ? "roi-good" : v < 1 ? "roi-risk" : ""; }
 </script>

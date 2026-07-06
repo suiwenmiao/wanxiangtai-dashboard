@@ -1,5 +1,5 @@
 <template>
-  <div ref="chartEl" class="echart" />
+  <div ref="chartEl" :class="['echart', classes]" />
 </template>
 
 <script setup>
@@ -7,10 +7,8 @@ import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import * as echarts from "echarts";
 
 const props = defineProps({
-  option: {
-    type: Object,
-    required: true
-  }
+  option: { type: Object, required: true },
+  classes: { type: String, default: "" }
 });
 
 const chartEl = ref(null);
@@ -24,9 +22,7 @@ function render() {
   if (chart) chart.setOption(props.option, true);
 }
 
-function resize() {
-  if (chart) chart.resize();
-}
+function resize() { if (chart) chart.resize(); }
 
 watch(() => props.option, render, { deep: true });
 
