@@ -139,3 +139,24 @@ tr:hover td { background: #f8f9fa; }
 .scenario-block table { font-size: 13px; min-width: auto; }
 .scenario-block th { padding: 8px 12px; background: #fff; }
 .scenario-block td { padding: 6px 12px; }
+
+/* ── Sortable headers ── */
+.sortable { cursor: pointer; user-select: none; }
+.sortable:hover { color: #667eea; }
+.sort-arrow { font-size: 11px; margin-left: 4px; opacity: 0.5; }
+.sort-arrow.active { opacity: 1; color: #667eea; }
+
+/* ── Summary section ── */
+.summary-box {
+  background: linear-gradient(135deg, #f8f9ff 0%, #eef1f8 100%);
+  border: 1px solid #dde3ed; border-radius: 10px; padding: 20px 24px; margin-bottom: 20px;
+}
+.summary-box .chart-title { margin-bottom: 12px; }
+.summary-line {
+  padding: 6px 0; font-size: 14px; color: #444; line-height: 1.7;
+}
+.summary-line strong { color: #333; }
+.summary-line .highlight-green { color: #27ae60; font-weight: 700; }
+.summary-line .highlight-red { color: #e74c3c; font-weight: 700; }
+.summary-line .highlight-blue { color: #667eea; font-weight: 700; }
+.summary-icon { margin-right: 6px; }

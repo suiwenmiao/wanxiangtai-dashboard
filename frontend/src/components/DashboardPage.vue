@@ -16,6 +16,12 @@
       <div class="chart-container"><div class="chart-title">推广场景花费占比</div><EChart :option="pieOption" /></div>
     </div>
 
+    <!-- Summary -->
+    <div class="summary-box">
+      <div class="chart-title">推广总结与建议</div>
+      <div v-for="(line, i) in summaryLines" :key="i" class="summary-line" v-html="line"></div>
+    </div>
+
     <div class="panel-table">
       <div class="chart-title">品类效果明细</div>
       <div class="table-wrap"><table>
@@ -81,6 +87,32 @@ const subRows = computed(() => {
   return Object.values(agg).map(r => ({ ...r, cost: Math.round(r.cost * 100) / 100, totalSales: Math.round(r.totalSales * 100) / 100, totalRoi: r.cost > 0 ? r.totalSales / r.cost : 0 })).sort((a, b) => b.cost - a.cost);
 });
 
+// Summary
+const summaryLines = computed(() => {
+  const rows = categoryRows.value;
+  const t = totals.value;
+  const lines = [];
+  if (rows.length === 0) { lines.push('当前筛选条件下暂无数据'); return lines; }
+  lines.push(`📊 当前筛选周期内总花费 <strong>¥${formatMoney(t.cost)}</strong>，总成交 <strong>¥${formatMoney(t.totalSales)}</strong>，整体 ROI <span class="highlight-blue">${t.totalRoi.toFixed(2)}</span>`);
+
+  const top3 = rows.slice(0, 3).map(r => `${r.category}（¥${formatMoney(r.cost)}，ROI ${r.totalRoi.toFixed(2)}）`);
+  lines.push(`💡 花费 TOP 3：${top3.join('、')}`);
+
+  const best = rows.reduce((a, b) => a.totalRoi > b.totalRoi ? a : b, rows[0]);
+  if (best && best.totalRoi > 0 && best.cost > 100) {
+    lines.push(`✅ ROI 表现最好的是品类 <strong>${best.category}</strong>，ROI 达 <span class="highlight-green">${best.totalRoi.toFixed(2)}</span>，建议关注其投放策略`);
+  }
+
+  const worst = rows.filter(r => r.cost > 100).reduce((a, b) => a.totalRoi < b.totalRoi ? a : b, rows[0]);
+  if (worst && worst.totalRoi < 3 && worst.cost > 100) {
+    lines.push(`⚠️ 品类 <strong>${worst.category}</strong> 的 ROI 较低（<span class="highlight-red">${worst.totalRoi.toFixed(2)}</span>），建议优化投放策略或调整预算分配`);
+  }
+
+  const ctr = t.impressions > 0 ? t.clicks / t.impressions * 100 : 0;
+  lines.push(`📈 整体点击率 ${ctr.toFixed(2)}%，展现量 ${t.impressions.toLocaleString()}，点击量 ${t.clicks.toLocaleString()}`);
+  return lines;
+});
+
 function roiClass(v) { return v >= 3 ? "roi-good" : v < 1 ? "roi-risk" : ""; }
 
 const axisDates = computed(() => dailyRows.value.map((r) => r.date));
@@ -107,7 +139,6 @@ const roiOption = computed(() => ({
   ]
 }));
 
-// Scenario pie chart — aggregate scenario costs from all subjects
 const scenarioRows = computed(() => {
   const agg = {};
   for (const s of payload.subjects) {
