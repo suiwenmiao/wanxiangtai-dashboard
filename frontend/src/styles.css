@@ -125,3 +125,17 @@ tr:hover td { background: #f8f9fa; }
   .echart { height: 220px; }
   .echart.tall { height: 260px; }
 }
+
+/* ── Subject inline detail ── */
+.subject-click { cursor: pointer; color: #667eea; font-weight: 600; }
+.subject-click:hover { text-decoration: underline; }
+.subj-inline-detail { padding: 16px 20px; background: #fafbfc; border-top: 1px solid #e8e8e8; }
+.scenario-block { margin-bottom: 14px; }
+.scenario-header {
+  background: #f0f2f5; padding: 8px 14px; font-weight: 700; font-size: 14px;
+  border-radius: 6px; margin-bottom: 6px;
+}
+.scenario-header .summary { font-weight: 400; color: #888; margin-left: 14px; font-size: 13px; }
+.scenario-block table { font-size: 13px; min-width: auto; }
+.scenario-block th { padding: 8px 12px; background: #fff; }
+.scenario-block td { padding: 6px 12px; }
