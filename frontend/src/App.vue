@@ -31,9 +31,8 @@
         </select>
       </div>
       <div style="display:flex;gap:8px;margin-left:auto;flex-wrap:wrap;">
-        <button class="btn" @click="tab = 'dashboard'">查询</button>
-        <button class="btn-quick" :class="{ active: quickDays === 7 }" @click="setQuickRange(7)">近7天</button>
         <button class="btn-quick" :class="{ active: quickDays === 1 }" @click="setQuickRange(1)">今天</button>
+        <button class="btn-quick" :class="{ active: quickDays === 7 }" @click="setQuickRange(7)">近7天</button>
         <button class="btn-quick" :class="{ active: quickDays === 30 }" @click="setQuickRange(30)">近30天</button>
         <button class="btn-quick" :class="{ active: quickDays === 90 }" @click="setQuickRange(90)">近90天</button>
         <button class="btn-quick" :class="{ active: quickDays === 0 }" @click="setQuickRange(0)">全部</button>
