@@ -92,15 +92,17 @@
                       <span class="summary">花费 ¥{{ formatMoney(group.cost) }} · 成交 ¥{{ formatMoney(group.totalSales) }} · ROI {{ group.roi.toFixed(2) }}</span>
                     </div>
                     <div class="table-wrap"><table>
-                      <thead><tr><th>计划名称</th><th class="num">花费</th><th class="num">总成交</th><th class="num">ROI</th><th class="num">点击</th><th class="num">展现</th></tr></thead>
+                      <thead><tr><th>计划名称</th><th class="num">花费</th><th class="num">总成交金额</th><th class="num">ROI</th><th class="num">点击率</th><th class="num">转化率</th><th class="num">点击</th><th class="num">CPC</th></tr></thead>
                       <tbody>
                         <tr v-for="(p, i) in group.plans" :key="i">
                           <td>{{ p.planName }}</td>
                           <td class="num">¥{{ formatMoney(p.cost) }}</td>
                           <td class="num">¥{{ formatMoney(p.totalSales) }}</td>
                           <td :class="['num', roiClass(p.totalRoi)]">{{ p.totalRoi.toFixed(2) }}</td>
+                          <td class="num">{{ formatPercent(p.impressions > 0 ? p.clicks / p.impressions : 0) }}</td>
+                          <td class="num">{{ formatPercent(p.clicks > 0 ? p.orders / p.clicks : 0) }}</td>
                           <td class="num">{{ p.clicks.toLocaleString() }}</td>
-                          <td class="num">{{ p.impressions.toLocaleString() }}</td>
+                          <td class="num">¥{{ p.clicks > 0 ? (p.cost / p.clicks).toFixed(2) : '0.00' }}</td>
                         </tr>
                       </tbody>
                     </table></div>
@@ -334,10 +336,11 @@ function getScenarioGroups(subject) {
     const es = (sc.totalSales||0) * ratio;
     const ecl = Math.round((sc.clicks||0) * ratio);
     const eim = Math.round((sc.impressions||0) * ratio);
+    const eo = Math.round((sc.orders||0) * ratio);
     const roi = ec > 0 ? es / ec : 0;
     if (!groups[sc.scenario]) groups[sc.scenario] = { scenario: sc.scenario, plans: [], cost: 0, totalSales: 0, clicks: 0, impressions: 0 };
     const g = groups[sc.scenario];
-    g.plans.push({ scenario: sc.scenario, planName: sc.planName, cost: Math.round(ec*100)/100, totalSales: Math.round(es*100)/100, clicks: ecl, impressions: eim, totalRoi: roi });
+    g.plans.push({ scenario: sc.scenario, planName: sc.planName, cost: Math.round(ec*100)/100, totalSales: Math.round(es*100)/100, clicks: ecl, impressions: eim, orders: eo, totalRoi: roi });
     g.cost += ec; g.totalSales += es; g.clicks += ecl; g.impressions += eim;
   }
   return Object.values(groups).map(g => ({ ...g, cost: Math.round(g.cost*100)/100, totalSales: Math.round(g.totalSales*100)/100, roi: g.cost > 0 ? g.totalSales / g.cost : 0 }));
