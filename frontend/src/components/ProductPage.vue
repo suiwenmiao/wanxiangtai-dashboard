@@ -87,10 +87,7 @@
               <td colspan="8" style="padding:0">
                 <div class="subj-inline-detail">
                   <div v-for="group in getScenarioGroups(s)" :key="group.scenario" class="scenario-block">
-                    <div class="scenario-header">
-                      推广场景：{{ group.scenario }}
-                      <span class="summary">花费 ¥{{ formatMoney(group.cost) }} · 成交 ¥{{ formatMoney(group.totalSales) }} · ROI {{ group.roi.toFixed(2) }}</span>
-                    </div>
+                    <div class="scenario-header"><span>推广场景：{{ group.scenario }}</span><span class="summary">花费 ¥{{ formatMoney(group.cost) }} · 成交 ¥{{ formatMoney(group.totalSales) }} · ROI {{ group.roi.toFixed(2) }}</span></div>
                     <div class="table-wrap"><table>
                       <thead><tr><th>计划名称</th><th class="num">花费</th><th class="num">总成交金额</th><th class="num">ROI</th><th class="num">点击率</th><th class="num">转化率</th><th class="num">点击</th><th class="num">CPC</th></tr></thead>
                       <tbody>

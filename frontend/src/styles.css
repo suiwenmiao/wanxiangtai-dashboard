@@ -146,15 +146,25 @@ tbody tr:hover td { background: #eef1f8; }
 .subject-click:hover { text-decoration: underline; }
 .subj-inline-detail { padding: 16px 20px; background: #fafbfc; border-top: 1px solid #e8e8e8; }
 .scenario-block { margin-bottom: 14px; }
+.scenario-block table { table-layout: fixed; font-size: 13px; min-width: auto; }
+.scenario-block th:first-child, .scenario-block td:first-child { width: 28%; }
+.scenario-block th:nth-child(2), .scenario-block td:nth-child(2) { width: 12%; }
+.scenario-block th:nth-child(3), .scenario-block td:nth-child(3) { width: 12%; }
+.scenario-block th:nth-child(4), .scenario-block td:nth-child(4) { width: 7%; }
+.scenario-block th:nth-child(5), .scenario-block td:nth-child(5) { width: 10%; }
+.scenario-block th:nth-child(6), .scenario-block td:nth-child(6) { width: 10%; }
+.scenario-block th:nth-child(7), .scenario-block td:nth-child(7) { width: 8%; }
+.scenario-block th:nth-child(8), .scenario-block td:nth-child(8) { width: 13%; }
 .scenario-header {
   background: #eef1f8; padding: 10px 14px; font-weight: 700; font-size: 14px;
   border-radius: 6px; margin-bottom: 6px;
+  display: flex; justify-content: space-between; align-items: center;
 }
 .scenario-header .summary { font-weight: 400; color: #888; margin-left: 14px; font-size: 13px; }
-.scenario-block table { font-size: 13px; min-width: auto; }
 .scenario-block th { padding: 9px 12px; background: #f8f9fa; font-size: 12px; color: #555; border-bottom-width: 1px; }
 .scenario-block td { padding: 7px 12px; }
 .scenario-block tbody tr:nth-child(even) td { background: #fcfcfd; }
+.scenario-block td:first-child, .scenario-block th:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Sortable headers ── */
 .sortable { cursor: pointer; user-select: none; }
