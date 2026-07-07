@@ -97,6 +97,8 @@ def build_subjects(df: pd.DataFrame) -> list[dict]:
         s["directSales"] += r["直接成交金额"]; s["orders"] += r["总成交笔数"]
         s["clicks"] += r["点击量"]; s["impressions"] += r["展现量"]
         s["carts"] += r["总购物车数"]
+        if not r.get("场景名字", ""):
+            continue
         scene_key = f"{r.get('场景名字','')}|{r.get('计划名字','')}"
         if scene_key not in s["scenarios"]:
             s["scenarios"][scene_key] = {

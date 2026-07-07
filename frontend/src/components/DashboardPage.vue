@@ -186,12 +186,15 @@ const roiOption = computed(() => ({
 const scenarioRows = computed(() => {
   const agg = {};
   for (const s of payload.subjects) {
+    if (selectedCategory.value && s.category !== selectedCategory.value) continue;
     for (const sc of s.scenarios) {
+      if (!sc.scenario) continue;
       if (!agg[sc.scenario]) agg[sc.scenario] = 0;
       agg[sc.scenario] += sc.cost;
     }
   }
-  return Object.entries(agg).map(([name, cost]) => ({ name, value: Number(cost.toFixed(2)) })).sort((a, b) => b.value - a.value);
+  const total = Object.values(agg).reduce((s, v) => s + v, 0);
+  return Object.entries(agg).map(([name, cost]) => ({ name, value: Number(cost.toFixed(2)), pct: total > 0 ? cost / total * 100 : 0 })).sort((a, b) => b.value - a.value);
 });
 const pieOption = computed(() => ({
   tooltip: { trigger: "item", formatter: "{b}: ¥{c} ({d}%)" },

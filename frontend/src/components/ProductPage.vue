@@ -153,6 +153,7 @@ const scenarioSummary = computed(() => {
     if (!full || full.cost === 0) continue;
     const ratio = subject.cost / full.cost;
     for (const sc of full.scenarios) {
+      if (!sc.scenario) continue;
       if (!agg[sc.scenario]) agg[sc.scenario] = { scenario:sc.scenario, cost:0, totalSales:0, clicks:0, impressions:0 };
       const a = agg[sc.scenario];
       a.cost += sc.cost * ratio;
@@ -318,6 +319,7 @@ function getScenarioGroups(subject) {
   const ratio = subject.cost / full.cost;
   const groups = {};
   for (const sc of full.scenarios) {
+    if (!sc.scenario) continue;
     const ec = sc.cost * ratio;
     const es = (sc.totalSales||0) * ratio;
     const ecl = Math.round((sc.clicks||0) * ratio);
