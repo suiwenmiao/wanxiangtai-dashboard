@@ -137,6 +137,7 @@ def main() -> None:
     records = build_records(df)
     subCategoryRecords = build_sub_category_records(df)
     subjects = build_subjects(df)
+    subjectDateRecords = build_subject_date_records(df)
 
     payload = {
         "generatedAt": datetime.now().isoformat(timespec="seconds"),
@@ -157,6 +158,7 @@ def main() -> None:
     print(f"  记录: {len(records)}")
     print(f"  细类记录: {len(subCategoryRecords)}")
     print(f"  主体: {len(subjects)}")
+    print(f"  主体日期记录: {len(subjectDateRecords)}")
     print(f"  文件大小: {size_kb:.1f} KB")
 
 
