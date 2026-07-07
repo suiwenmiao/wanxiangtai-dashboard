@@ -125,7 +125,22 @@ const displaySubjects = computed(() => {
     .slice(0, 100);
 });
 
-// Actionable summary for individual category analysis
+// Category-specific ROI thresholds per industry experience
+const THRESHOLDS = {
+  'DT':  { good: 6, ok: 3.5, warn: 2.5 },  // 台式机: 高客单，整体ROI偏高
+  'NB':  { good: 6, ok: 3.5, warn: 2.5 },  // 笔记本: 同DT
+  'IP':  { good: 4.5, ok: 3, warn: 2 },    // 平板配件: 中等客单
+  '平板': { good: 4, ok: 2.5, warn: 1.5 },
+  '手机': { good: 4, ok: 2.5, warn: 1.5 },
+  '显示器': { good: 3.5, ok: 2.5, warn: 1.5 },
+  '服务': { good: 3, ok: 2, warn: 1.2 },   // 服务: 低客单高频率
+  '选件': { good: 3, ok: 2, warn: 1.2 },
+  'SIOT': { good: 3, ok: 2, warn: 1 },
+  '其他': { good: 3, ok: 2, warn: 1 },
+};
+function getT(cat) { return THRESHOLDS[cat] || THRESHOLDS['其他']; }
+
+// Actionable summary with category-specific thresholds
 const summaryLines = computed(() => {
   const rows = displaySubjects.value; const t = kpi.value; const p = prevKpi.value;
   const lines = []; if (rows.length === 0) { lines.push('当前筛选条件下暂无数据'); return lines; }
@@ -139,46 +154,61 @@ const summaryLines = computed(() => {
   }
   lines.push(`📊 总花费 <strong>¥${formatMoney(t.cost)}</strong>，总成交 <strong>¥${formatMoney(t.totalSales)}</strong>，整体 ROI <span class="highlight-blue">${t.totalRoi.toFixed(2)}</span> ${hbStr}`);
 
-  // 🔴 问题主体：花得多 ROI 低
-  const problem = rows.filter(s => s.cost > 500 && s.totalRoi < 2);
-  if (problem.length > 0) {
-    lines.push(`<br><b>🔴 需紧急处理的问题主体（花费高 ROI 低）</b>`);
-    problem.slice(0, 5).forEach(s => {
-      lines.push(`&nbsp;&nbsp;• <strong>${s.subjectId}</strong>（${s.category}）花费 ¥${formatMoney(s.cost)}，ROI <span class="highlight-red">${s.totalRoi.toFixed(2)}</span>`);
-      if (s.totalRoi < 0.5) lines.push(`&nbsp;&nbsp;&nbsp;&nbsp;→ <b>建议立即暂停</b>，该主体严重亏损`);
-      else if (s.totalRoi < 1) lines.push(`&nbsp;&nbsp;&nbsp;&nbsp;→ <b>建议暂停或大幅降低出价</b>，优化关键词和人群定向`);
-      else lines.push(`&nbsp;&nbsp;&nbsp;&nbsp;→ 建议<b>降低预算</b>，检查落地页转化率及素材质量`);
+  // Categorize subjects by category-specific thresholds
+  const crit = [], lowEff = [], goodList = [];
+  for (const s of rows) {
+    if (s.cost < 200) continue;
+    const thr = getT(s.category);
+    if (s.totalRoi >= thr.good) goodList.push(s);
+    else if (s.totalRoi >= thr.ok) { /* normal - no action needed */ }
+    else if (s.totalRoi >= thr.warn) lowEff.push(s);
+    else crit.push(s);
+  }
+
+  // 🔴 Critical: below warn threshold
+  if (crit.length > 0) {
+    lines.push(`<br><b>🔴 需紧急处理（ROI 低于品类警戒线，共 ${crit.length} 条）</b>`);
+    crit.sort((a,b) => b.cost - a.cost).slice(0, 6).forEach(s => {
+      const thr = getT(s.category);
+      lines.push(`&nbsp;&nbsp;• <strong>${s.subjectId}</strong>（${s.category}）花费 ¥${formatMoney(s.cost)}，ROI <span class="highlight-red">${s.totalRoi.toFixed(2)}</span>（品类警戒线 ${thr.warn}）`);
+      if (s.totalRoi < thr.warn * 0.4) lines.push(`&nbsp;&nbsp;&nbsp;&nbsp;→ <b>建议立即暂停</b>，严重低于品类标准`);
+      else if (s.totalRoi < thr.warn * 0.7) lines.push(`&nbsp;&nbsp;&nbsp;&nbsp;→ <b>建议暂停或大幅降价</b>，优化人群与关键词`);
+      else lines.push(`&nbsp;&nbsp;&nbsp;&nbsp;→ 建议<b>降低预算</b>，检查转化及素材质量`);
     });
   }
 
-  // 🟢 优质主体：花得多 ROI 高
-  const good = rows.filter(s => s.cost > 500 && s.totalRoi >= 3).sort((a, b) => b.totalRoi - a.totalRoi);
-  if (good.length > 0) {
-    lines.push(`<br><b>🟢 表现优异可加量主体</b>`);
-    good.slice(0, 3).forEach(s => {
-      lines.push(`&nbsp;&nbsp;• <strong>${s.subjectId}</strong>（${s.category}）ROI <span class="highlight-green">${s.totalRoi.toFixed(2)}</span>，花费 ¥${formatMoney(s.cost)} → 建议<b>保持策略，可适当增加 20-30% 预算</b>`);
+  // 🟡 Low efficiency: below ok line, above warn
+  if (lowEff.length > 0) {
+    lines.push(`<br><b>🟡 效率偏低需关注（ROI 低于品类及格线，共 ${lowEff.length} 条）</b>`);
+    lowEff.sort((a,b) => b.cost - a.cost).slice(0, 6).forEach(s => {
+      const thr = getT(s.category);
+      lines.push(`&nbsp;&nbsp;• <strong>${s.subjectId}</strong>（${s.category}）ROI <span style="color:#e67e22">${s.totalRoi.toFixed(2)}</span>，品类及格线 ${thr.ok}，花费 ¥${formatMoney(s.cost)} → 建议<b>优化出价和定向</b>，观察 3-5 天无改善则降低预算`);
     });
   }
 
-  // 📊 场景分布分析
+  // 🟢 Good performers
+  if (goodList.length > 0) {
+    lines.push(`<br><b>🟢 表现优异可加量主体（ROI 高于品类优秀线，共 ${goodList.length} 条）</b>`);
+    goodList.sort((a,b) => b.totalRoi - a.totalRoi).slice(0, 4).forEach(s => {
+      lines.push(`&nbsp;&nbsp;• <strong>${s.subjectId}</strong>（${s.category}）ROI <span class="highlight-green">${s.totalRoi.toFixed(2)}</span>，花费 ¥${formatMoney(s.cost)} → 建议<b>保持策略，可增加 20-30% 预算</b>`);
+    });
+  }
+
+  // 📊 场景分布
   const sceneAgg = {}; let sceneTotal = 0;
   for (const s of rows) {
-    for (const sc of s.scenarios) {
-      if (!sceneAgg[sc.scenario]) sceneAgg[sc.scenario] = 0;
-      sceneAgg[sc.scenario] += sc.cost; sceneTotal += sc.cost;
-    }
+    for (const sc of s.scenarios) { if (!sceneAgg[sc.scenario]) sceneAgg[sc.scenario] = 0; sceneAgg[sc.scenario] += sc.cost; sceneTotal += sc.cost; }
   }
   if (sceneTotal > 0) {
-    const sceneTop = Object.entries(sceneAgg).sort((a, b) => b[1] - a[1]).slice(0, 3);
-    const sceneStr = sceneTop.map(([name, cost]) => `${name}占 <b>${(cost / sceneTotal * 100).toFixed(0)}%</b>`).join('、');
-    lines.push(`<br>📈 推广场景分布：${sceneStr}`);
+    const t3 = Object.entries(sceneAgg).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    lines.push(`<br>📈 推广场景分布：${t3.map(([n,c]) => `${n}占 <b>${(c/sceneTotal*100).toFixed(0)}%</b>`).join('、')}`);
   }
 
-  // 整体建议
+  // 💡 Overall advice
   const roiAvg = t.totalRoi;
-  if (roiAvg < 2) lines.push(`<br>💡 整体 ROI <span class="highlight-red">${roiAvg.toFixed(2)}</span> 偏低，建议<b>减少低 ROI 商品投放</b>，将预算集中到高 ROI 商品上，同时优化创意素材和人群精准度`);
-  else if (roiAvg < 3) lines.push(`<br>💡 整体 ROI <span class="highlight-blue">${roiAvg.toFixed(2)}</span> 处于中等水平，建议<b>稳步优化</b>，重点处理 ROI < 2 的商品，提升整体投放效率`);
-  else lines.push(`<br>💡 整体 ROI <span class="highlight-green">${roiAvg.toFixed(2)}</span> 表现良好，建议<b>持续当前策略</b>，对优质商品适当增加预算以扩大收益`);
+  if (roiAvg < 2) lines.push(`<br>💡 整体 ROI <span class="highlight-red">${roiAvg.toFixed(2)}</span> 偏低，建议<b>暂停低 ROI 商品</b>，预算集中到高 ROI 商品上，同时优化素材和人群精准度`);
+  else if (roiAvg < 3) lines.push(`<br>💡 整体 ROI <span class="highlight-blue">${roiAvg.toFixed(2)}</span> 处于中等水平，建议<b>稳步优化</b>，重点处理低效商品，提升整体投放效率`);
+  else lines.push(`<br>💡 整体 ROI <span class="highlight-green">${roiAvg.toFixed(2)}</span> 表现良好，建议<b>持续当前策略</b>，优质商品适当增加预算`);
 
   return lines;
 });
