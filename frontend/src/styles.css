@@ -167,3 +167,8 @@ tr:hover td { background: #f8f9fa; }
 .kpi-change.up { color: #e74c3c; }
 .kpi-change.down { color: #27ae60; }
 .kpi-change.flat { color: #999; }
+
+/* ── Inline 环比 indicator ── */
+.hb-inline { font-size: 11px; margin-left: 4px; white-space: nowrap; }
+.hb-inline.up { color: #e74c3c; }
+.hb-inline.down { color: #27ae60; }

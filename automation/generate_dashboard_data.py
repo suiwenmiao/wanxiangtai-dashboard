@@ -137,6 +137,7 @@ def build_subject_date_records(df: pd.DataFrame) -> list[dict]:
         totalSales=("总成交金额", "sum"),
         clicks=("点击量", "sum"),
         impressions=("展现量", "sum"),
+        orders=("总成交笔数", "sum"),
     )
     result = []
     for _, r in groups.iterrows():
@@ -150,6 +151,7 @@ def build_subject_date_records(df: pd.DataFrame) -> list[dict]:
             "totalSales": round(float(r["totalSales"]), 2),
             "clicks": int(r["clicks"]),
             "impressions": int(r["impressions"]),
+            "orders": int(r["orders"]),
         })
     return result
 
