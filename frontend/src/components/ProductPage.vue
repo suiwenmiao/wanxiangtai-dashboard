@@ -160,10 +160,10 @@ const scenarioSummary = computed(() => {
         const a = agg[sc.scenario];
         a.cost += sc.cost * ratio;
         a.totalSales += (sc.totalSales||0) * ratio;
-        a.clicks += Math.round((sc.clicks||0) * ratio);
-        a.impressions += Math.round((sc.impressions||0) * ratio);
-        a.orders += Math.round((subject.orders||0) * sc.cost / (full.cost||1));
-      }
+      a.clicks += Math.round((sc.clicks||0) * ratio);
+      a.impressions += Math.round((sc.impressions||0) * ratio);
+      a.orders += Math.round((sc.orders||0) * ratio);
+    }
     }
     const totalCost = Object.values(agg).reduce((s, a) => s + a.cost, 0);
     return Object.values(agg).map(a => ({

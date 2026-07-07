@@ -105,10 +105,11 @@ def build_subjects(df: pd.DataFrame) -> list[dict]:
                 "scenario": str(r.get("场景名字", "")),
                 "planName": str(r.get("计划名字", "")),
                 "cost": 0, "totalSales": 0, "clicks": 0, "impressions": 0,
+                "orders": 0,
             }
         sc = s["scenarios"][scene_key]
         sc["cost"] += r["花费"]; sc["totalSales"] += r["总成交金额"]
-        sc["clicks"] += r["点击量"]; sc["impressions"] += r["展现量"]
+        sc["clicks"] += r["点击量"]; sc["impressions"] += r["展现量"]; sc["orders"] += int(r["总成交笔数"])
 
     result = []
     for sid, s in subjects_map.items():
