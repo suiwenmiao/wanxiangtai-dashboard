@@ -116,13 +116,41 @@ function changeClass(v) { if (v == null) return ''; return v > 0 ? 'up' : v < 0 
 function hbText(v) { if (v == null) return ''; return (v > 0 ? '+' : '') + v.toFixed(1) + '%'; }
 
 const displaySubjects = computed(() => {
+  // Compute from date-filtered records + subjectDateRecords
+  const dates = new Set(props.filtered.map(r => r.date));
   const cats = new Set(props.filtered.map(r => r.category));
   const allCats = cats.size >= payload.categories.length;
-  let result = payload.subjects;
-  if (!allCats && cats.size > 0) result = result.filter(s => cats.has(s.category));
-  return result.map(s => ({ ...s, totalRoi: s.cost > 0 ? s.totalSales / s.cost : 0 }))
-    .sort((a, b) => { const mul = sortDir.value === 'desc' ? -1 : 1; const va = a[sortField.value], vb = b[sortField.value]; return typeof va === 'string' ? (va||'').localeCompare(vb||'') * mul : ((va||0)-(vb||0)) * mul; })
-    .slice(0, 100);
+  const isFullRange = dates.size >= payload.records.length;
+
+  // Build subject metadata lookup
+  const metaMap = {};
+  for (const s of payload.subjects) metaMap[s.subjectId] = s;
+
+  // If full date range, use cached subjects (much faster)
+  if (isFullRange || dates.size === 0 || !payload.subjectDateRecords) {
+    let result = payload.subjects;
+    if (!allCats && cats.size > 0) result = result.filter(s => cats.has(s.category));
+    return result.map(s => ({ ...s, totalRoi: s.cost > 0 ? s.totalSales / s.cost : 0 }))
+      .sort((a, b) => { const mul = sortDir.value==='desc'?-1:1; const va=a[sortField.value],vb=b[sortField.value]; return typeof va==='string'?(va||'').localeCompare(vb||'')*mul:((va||0)-(vb||0))*mul; })
+      .slice(0, 100);
+  }
+
+  // Filter subjectDateRecords by selected dates
+  let sdr = payload.subjectDateRecords.filter(r => dates.has(r.date));
+  // Aggregate by subjectId
+  const agg = {};
+  for (const r of sdr) {
+    if (!agg[r.subjectId]) agg[r.subjectId] = { cost:0, totalSales:0, clicks:0, impressions:0 };
+    const a = agg[r.subjectId]; a.cost += r.cost; a.totalSales += r.totalSales; a.clicks += r.clicks; a.impressions += r.impressions;
+  }
+  // Build result with metadata, filter by category
+  let result = Object.entries(agg).map(([sid, m]) => {
+    const meta = metaMap[sid]; if (!meta) return null;
+    if (!allCats && cats.size > 0 && !cats.has(meta.category)) return null;
+    return { ...meta, cost:Math.round(m.cost*100)/100, totalSales:Math.round(m.totalSales*100)/100, clicks:m.clicks, impressions:m.impressions, totalRoi:m.cost>0?m.totalSales/m.cost:0 };
+  }).filter(Boolean);
+
+  return result.sort((a, b) => { const mul=sortDir.value==='desc'?-1:1; const va=a[sortField.value],vb=b[sortField.value]; return typeof va==='string'?(va||'').localeCompare(vb||'')*mul:((va||0)-(vb||0))*mul; }).slice(0, 100);
 });
 
 // Category-specific ROI thresholds per industry experience
