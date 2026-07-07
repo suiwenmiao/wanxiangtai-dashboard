@@ -29,6 +29,34 @@
       <div v-for="(line, i) in summaryLines" :key="i" class="summary-line" v-html="line"></div>
     </div>
 
+    <!-- Channel Summary -->
+    <div class="panel-table">
+      <div class="chart-title">渠道推广概览（按推广场景）</div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>推广场景</th>
+          <th class="num">花费占比</th>
+          <th class="num">花费</th>
+          <th class="num">总 ROI</th>
+          <th class="num">转化率</th>
+          <th class="num">点击率</th>
+          <th class="num">CPC</th>
+        </tr></thead>
+        <tbody>
+          <tr v-for="sc in scenarioSummary" :key="sc.scenario">
+            <td><strong>{{ sc.scenario }}</strong></td>
+            <td class="num">{{ sc.costPct.toFixed(1) }}%</td>
+            <td class="num">¥{{ formatMoney(sc.cost) }}</td>
+            <td :class="['num', roiClass(sc.roi)]">{{ sc.roi.toFixed(2) }}</td>
+            <td class="num">{{ formatPercent(sc.cvr) }}</td>
+            <td class="num">{{ formatPercent(sc.ctr) }}</td>
+            <td class="num">¥{{ sc.cpc.toFixed(2) }}</td>
+          </tr>
+          <tr v-if="scenarioSummary.length === 0"><td colspan="7" class="empty">暂无数据</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+
     <!-- Subjects Table -->
     <div class="panel-table">
       <div class="chart-title">主体推广数据 ({{ displaySubjects.length }}条)</div>
@@ -114,6 +142,42 @@ const hb = computed(() => {
 });
 function changeClass(v) { if (v == null) return ''; return v > 0 ? 'up' : v < 0 ? 'down' : 'flat'; }
 function hbText(v) { if (v == null) return ''; return (v > 0 ? '+' : '') + v.toFixed(1) + '%'; }
+
+// Channel scenario summary — estimate date-filtered metrics from subjects' full-period scenario proportions
+const scenarioSummary = computed(() => {
+  const fullMap = {};
+  for (const s of payload.subjects) { if (s.cost > 0) fullMap[s.subjectId] = s; }
+  const agg = {};
+  for (const subject of displaySubjects.value) {
+    const full = fullMap[subject.subjectId];
+    if (!full || full.cost === 0) continue;
+    const ratio = subject.cost / full.cost;
+    for (const sc of full.scenarios) {
+      if (!agg[sc.scenario]) agg[sc.scenario] = { scenario:sc.scenario, cost:0, totalSales:0, clicks:0, impressions:0 };
+      const a = agg[sc.scenario];
+      a.cost += sc.cost * ratio;
+      a.totalSales += (sc.totalSales||0) * ratio;
+      a.clicks += Math.round((sc.clicks||0) * ratio);
+      a.impressions += Math.round((sc.impressions||0) * ratio);
+    }
+  }
+  const totalCost = Object.values(agg).reduce((s, a) => s + a.cost, 0);
+  const totalOrders = displaySubjects.value.reduce((s, subj) => s + subj.orders, 0);
+  const totalClicks = displaySubjects.value.reduce((s, subj) => s + subj.clicks, 0);
+  const globalCvr = totalClicks > 0 ? totalOrders / totalClicks : 0;
+  return Object.values(agg).map(a => ({
+    scenario: a.scenario,
+    cost: Math.round(a.cost*100)/100,
+    totalSales: Math.round(a.totalSales*100)/100,
+    costPct: totalCost > 0 ? a.cost / totalCost * 100 : 0,
+    roi: a.cost > 0 ? a.totalSales / a.cost : 0,
+    cvr: globalCvr,
+    ctr: a.impressions > 0 ? a.clicks / a.impressions : 0,
+    cpc: a.cost > 0 ? a.cost / a.clicks : 0,
+  })).sort((a, b) => b.cost - a.cost);
+});
+
+
 
 const displaySubjects = computed(() => {
   // Compute from date-filtered records + subjectDateRecords
@@ -248,14 +312,23 @@ function roiRowClass(s) { return s.totalRoi < 0.5 ? 'row-danger' : s.totalRoi >=
 function roiClass(v) { return v >= 3 ? "roi-good" : v < 1 ? "roi-risk" : ""; }
 
 function getScenarioGroups(subject) {
+  // Look up full-period subject data and apply date-filtered ratio
+  const full = payload.subjects.find(s => s.subjectId === subject.subjectId);
+  if (!full || full.cost === 0) return [];
+  const ratio = subject.cost / full.cost;
   const groups = {};
-  for (const sc of subject.scenarios) {
-    const roi = sc.cost > 0 ? sc.totalSales / sc.cost : 0;
+  for (const sc of full.scenarios) {
+    const ec = sc.cost * ratio;
+    const es = (sc.totalSales||0) * ratio;
+    const ecl = Math.round((sc.clicks||0) * ratio);
+    const eim = Math.round((sc.impressions||0) * ratio);
+    const roi = ec > 0 ? es / ec : 0;
     if (!groups[sc.scenario]) groups[sc.scenario] = { scenario: sc.scenario, plans: [], cost: 0, totalSales: 0, clicks: 0, impressions: 0 };
     const g = groups[sc.scenario];
-    g.plans.push({ ...sc, totalRoi: roi }); g.cost += sc.cost; g.totalSales += sc.totalSales; g.clicks += sc.clicks; g.impressions += sc.impressions;
+    g.plans.push({ scenario: sc.scenario, planName: sc.planName, cost: Math.round(ec*100)/100, totalSales: Math.round(es*100)/100, clicks: ecl, impressions: eim, totalRoi: roi });
+    g.cost += ec; g.totalSales += es; g.clicks += ecl; g.impressions += eim;
   }
-  return Object.values(groups).map(g => ({ ...g, cost: Math.round(g.cost * 100) / 100, totalSales: Math.round(g.totalSales * 100) / 100, roi: g.cost > 0 ? g.totalSales / g.cost : 0 }));
+  return Object.values(groups).map(g => ({ ...g, cost: Math.round(g.cost*100)/100, totalSales: Math.round(g.totalSales*100)/100, roi: g.cost > 0 ? g.totalSales / g.cost : 0 }));
 }
 
 function toggleDetail(id) { expandedId.value = expandedId.value === id ? null : id; }
