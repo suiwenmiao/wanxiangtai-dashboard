@@ -1,13 +1,41 @@
 <template>
   <div>
+    <!-- KPI -->
     <div class="kpi-row">
-      <div class="kpi-card cost"><div class="kpi-label">花费</div><div class="kpi-value">¥{{ formatMoney(totals.cost) }}</div></div>
-      <div class="kpi-card sales"><div class="kpi-label">总成交</div><div class="kpi-value">¥{{ formatMoney(totals.totalSales) }}</div></div>
-      <div class="kpi-card droi"><div class="kpi-label">直接 ROI</div><div class="kpi-value">{{ totals.directRoi.toFixed(2) }}</div></div>
-      <div class="kpi-card troi"><div class="kpi-label">总 ROI</div><div class="kpi-value">{{ totals.totalRoi.toFixed(2) }}</div></div>
-      <div class="kpi-card cvr"><div class="kpi-label">转化率</div><div class="kpi-value">{{ formatPercent(totals.cvr) }}</div></div>
+      <div class="kpi-card cost">
+        <div class="kpi-label">花费</div>
+        <div class="kpi-value">¥{{ formatMoney(totals.cost) }}</div>
+        <div v-if="hb" class="kpi-change" :class="changeClass(hb.cost)"><span class="arrow">{{ hb.cost > 0 ? '↑' : hb.cost < 0 ? '↓' : '' }}</span>{{ hbText(hb.cost) }} 环比</div>
+      </div>
+      <div class="kpi-card sales">
+        <div class="kpi-label">总成交</div>
+        <div class="kpi-value">¥{{ formatMoney(totals.totalSales) }}</div>
+        <div v-if="hb" class="kpi-change" :class="changeClass(hb.totalSales)"><span class="arrow">{{ hb.totalSales > 0 ? '↑' : hb.totalSales < 0 ? '↓' : '' }}</span>{{ hbText(hb.totalSales) }} 环比</div>
+      </div>
+      <div class="kpi-card droi">
+        <div class="kpi-label">直接 ROI</div>
+        <div class="kpi-value">{{ totals.directRoi.toFixed(2) }}</div>
+        <div v-if="hb" class="kpi-change" :class="changeClass(hb.directRoi)"><span class="arrow">{{ hb.directRoi > 0 ? '↑' : hb.directRoi < 0 ? '↓' : '' }}</span>{{ hb.directRoi > 0 ? '+' : '' }}{{ hb.directRoi.toFixed(2) }} 环比</div>
+      </div>
+      <div class="kpi-card troi">
+        <div class="kpi-label">总 ROI</div>
+        <div class="kpi-value">{{ totals.totalRoi.toFixed(2) }}</div>
+        <div v-if="hb" class="kpi-change" :class="changeClass(hb.totalRoi)"><span class="arrow">{{ hb.totalRoi > 0 ? '↑' : hb.totalRoi < 0 ? '↓' : '' }}</span>{{ hb.totalRoi > 0 ? '+' : '' }}{{ hb.totalRoi.toFixed(2) }} 环比</div>
+      </div>
+      <div class="kpi-card cvr">
+        <div class="kpi-label">转化率</div>
+        <div class="kpi-value">{{ formatPercent(totals.cvr) }}</div>
+        <div v-if="hb" class="kpi-change" :class="changeClass(hb.cvr)"><span class="arrow">{{ hb.cvr > 0 ? '↑' : hb.cvr < 0 ? '↓' : '' }}</span>{{ hb.cvr > 0 ? '+' : '' }}{{ (hb.cvr * 100).toFixed(2) }}pp 环比</div>
+      </div>
     </div>
 
+    <!-- Summary at TOP -->
+    <div class="summary-box">
+      <div class="chart-title">推广总结与建议</div>
+      <div v-for="(line, i) in summaryLines" :key="i" class="summary-line" v-html="line"></div>
+    </div>
+
+    <!-- Charts -->
     <div class="chart-row full">
       <div class="chart-container"><div class="chart-title">每日花费与成交金额趋势</div><EChart :option="trendOption" classes="echart tall" /></div>
     </div>
@@ -16,12 +44,7 @@
       <div class="chart-container"><div class="chart-title">推广场景花费占比</div><EChart :option="pieOption" /></div>
     </div>
 
-    <!-- Summary -->
-    <div class="summary-box">
-      <div class="chart-title">推广总结与建议</div>
-      <div v-for="(line, i) in summaryLines" :key="i" class="summary-line" v-html="line"></div>
-    </div>
-
+    <!-- Tables -->
     <div class="panel-table">
       <div class="chart-title">品类效果明细</div>
       <div class="table-wrap"><table>
@@ -67,12 +90,61 @@ import EChart from "./EChart.vue";
 import payload from "../data/dashboard-data.json";
 import { byDate, byCategory, formatMoney, formatPercent, sumMetrics } from "../utils/metrics";
 
-const props = defineProps({ filtered: { type: Array, required: true }, category: String, allSubCats: { type: Array, default: () => [] } });
+const props = defineProps({ filtered: { type: Array, required: true }, prevFiltered: { type: Array, default: [] }, category: String, allSubCats: { type: Array, default: () => [] } });
 
 const selectedCategory = computed(() => props.category && props.category !== "all" ? props.category : null);
 const totals = computed(() => sumMetrics(props.filtered));
+const prevTot = computed(() => props.prevFiltered.length ? sumMetrics(props.prevFiltered) : null);
 const dailyRows = computed(() => byDate(props.filtered));
 const categoryRows = computed(() => byCategory(props.filtered));
+
+const hb = computed(() => {
+  if (!prevTot.value) return null;
+  const t = totals.value, p = prevTot.value;
+  return {
+    cost: p.cost ? (t.cost - p.cost) / p.cost * 100 : 0,
+    totalSales: p.totalSales ? (t.totalSales - p.totalSales) / p.totalSales * 100 : 0,
+    directRoi: t.directRoi - p.directRoi,
+    totalRoi: t.totalRoi - p.totalRoi,
+    cvr: t.cvr - p.cvr,
+  };
+});
+function changeClass(v) { if (v == null) return ''; return v > 0 ? 'up' : v < 0 ? 'down' : 'flat'; }
+function hbText(v) { if (v == null) return ''; return (v > 0 ? '+' : '') + v.toFixed(1) + '%'; }
+
+// Summary at top
+const summaryLines = computed(() => {
+  const rows = categoryRows.value;
+  const t = totals.value; const p = prevTot.value;
+  const lines = [];
+  if (rows.length === 0) { lines.push('当前筛选条件下暂无数据'); return lines; }
+
+  let hbStr = '';
+  if (p) {
+    const h = hb.value;
+    const c = h.cost > 0 ? `<span class="highlight-red">↑${h.cost.toFixed(1)}%</span>` : h.cost < 0 ? `<span class="highlight-green">↓${Math.abs(h.cost).toFixed(1)}%</span>` : '持平';
+    const s = h.totalSales > 0 ? `<span class="highlight-green">↑${h.totalSales.toFixed(1)}%</span>` : h.totalSales < 0 ? `<span class="highlight-red">↓${Math.abs(h.totalSales).toFixed(1)}%</span>` : '持平';
+    hbStr = `（花费 ${c}，成交 ${s}，环比上一同期段）`;
+  }
+  lines.push(`📊 总花费 <strong>¥${formatMoney(t.cost)}</strong>，总成交 <strong>¥${formatMoney(t.totalSales)}</strong>，整体 ROI <span class="highlight-blue">${t.totalRoi.toFixed(2)}</span> ${hbStr}`);
+
+  const top3 = rows.slice(0, 3).map(r => `${r.category}（¥${formatMoney(r.cost)}，ROI ${r.totalRoi.toFixed(2)}）`);
+  lines.push(`💡 花费 TOP 3：${top3.join('、')}`);
+
+  const best = rows.reduce((a, b) => a.totalRoi > b.totalRoi ? a : b, rows[0]);
+  if (best && best.totalRoi > 0 && best.cost > 100) {
+    lines.push(`✅ 表现最佳品类 <strong>${best.category}</strong>，ROI <span class="highlight-green">${best.totalRoi.toFixed(2)}</span>，花费 ¥${formatMoney(best.cost)} → 建议<b>关注其投放策略，可适当增加预算</b>`);
+  }
+
+  const worst = rows.filter(r => r.cost > 100).reduce((a, b) => a.totalRoi < b.totalRoi ? a : b, rows[0]);
+  if (worst && worst.totalRoi < 3 && worst.cost > 100) {
+    lines.push(`⚠️ 需优化品类 <strong>${worst.category}</strong>，ROI <span class="highlight-red">${worst.totalRoi.toFixed(2)}</span>，花费 ¥${formatMoney(worst.cost)} → 建议<b>暂停或降低预算</b>，检查落地页转化和关键词匹配度`);
+  }
+
+  const ctr = t.impressions > 0 ? t.clicks / t.impressions * 100 : 0;
+  lines.push(`📈 整体点击率 ${ctr.toFixed(2)}%，展现 ${t.impressions.toLocaleString()}，点击 ${t.clicks.toLocaleString()}`);
+  return lines;
+});
 
 const subRows = computed(() => {
   if (!selectedCategory.value) return [];
@@ -85,32 +157,6 @@ const subRows = computed(() => {
     a.clicks += r.clicks; a.impressions += r.impressions; a.orders += r.orders; a.carts += r.carts;
   }
   return Object.values(agg).map(r => ({ ...r, cost: Math.round(r.cost * 100) / 100, totalSales: Math.round(r.totalSales * 100) / 100, totalRoi: r.cost > 0 ? r.totalSales / r.cost : 0 })).sort((a, b) => b.cost - a.cost);
-});
-
-// Summary
-const summaryLines = computed(() => {
-  const rows = categoryRows.value;
-  const t = totals.value;
-  const lines = [];
-  if (rows.length === 0) { lines.push('当前筛选条件下暂无数据'); return lines; }
-  lines.push(`📊 当前筛选周期内总花费 <strong>¥${formatMoney(t.cost)}</strong>，总成交 <strong>¥${formatMoney(t.totalSales)}</strong>，整体 ROI <span class="highlight-blue">${t.totalRoi.toFixed(2)}</span>`);
-
-  const top3 = rows.slice(0, 3).map(r => `${r.category}（¥${formatMoney(r.cost)}，ROI ${r.totalRoi.toFixed(2)}）`);
-  lines.push(`💡 花费 TOP 3：${top3.join('、')}`);
-
-  const best = rows.reduce((a, b) => a.totalRoi > b.totalRoi ? a : b, rows[0]);
-  if (best && best.totalRoi > 0 && best.cost > 100) {
-    lines.push(`✅ ROI 表现最好的是品类 <strong>${best.category}</strong>，ROI 达 <span class="highlight-green">${best.totalRoi.toFixed(2)}</span>，建议关注其投放策略`);
-  }
-
-  const worst = rows.filter(r => r.cost > 100).reduce((a, b) => a.totalRoi < b.totalRoi ? a : b, rows[0]);
-  if (worst && worst.totalRoi < 3 && worst.cost > 100) {
-    lines.push(`⚠️ 品类 <strong>${worst.category}</strong> 的 ROI 较低（<span class="highlight-red">${worst.totalRoi.toFixed(2)}</span>），建议优化投放策略或调整预算分配`);
-  }
-
-  const ctr = t.impressions > 0 ? t.clicks / t.impressions * 100 : 0;
-  lines.push(`📈 整体点击率 ${ctr.toFixed(2)}%，展现量 ${t.impressions.toLocaleString()}，点击量 ${t.clicks.toLocaleString()}`);
-  return lines;
 });
 
 function roiClass(v) { return v >= 3 ? "roi-good" : v < 1 ? "roi-risk" : ""; }
@@ -128,7 +174,6 @@ const trendOption = computed(() => ({
     { name: "总成交", type: "line", smooth: true, data: dailyRows.value.map(r => Number(r.totalSales.toFixed(2))), itemStyle: { color: "#4ecdc4" }, areaStyle: { opacity: 0.08 } }
   ]
 }));
-
 const roiOption = computed(() => ({
   tooltip: { trigger: "axis" }, legend: { top: 0, data: ["直接 ROI", "总 ROI"] },
   grid: { left: 44, right: 20, top: 42, bottom: 48 },
@@ -138,7 +183,6 @@ const roiOption = computed(() => ({
     { name: "总 ROI", type: "line", smooth: true, data: dailyRows.value.map(r => Number(r.totalRoi.toFixed(2))), itemStyle: { color: "#96ceb4" } }
   ]
 }));
-
 const scenarioRows = computed(() => {
   const agg = {};
   for (const s of payload.subjects) {
@@ -149,7 +193,6 @@ const scenarioRows = computed(() => {
   }
   return Object.entries(agg).map(([name, cost]) => ({ name, value: Number(cost.toFixed(2)) })).sort((a, b) => b.value - a.value);
 });
-
 const pieOption = computed(() => ({
   tooltip: { trigger: "item", formatter: "{b}: ¥{c} ({d}%)" },
   legend: { type: "scroll", bottom: 0 },

@@ -37,10 +37,11 @@
         <button class="btn-quick" :class="{ active: quickDays === 90 }" @click="setQuickRange(90)">近90天</button>
         <button class="btn-quick" :class="{ active: quickDays === 0 }" @click="setQuickRange(0)">全部</button>
       </div>
+      <div v-if="prevLabel" class="huanbi-label">{{ prevLabel }}</div>
     </div>
 
-    <DashboardPage v-if="tab === 'dashboard'" :filtered="filtered" :category="category" :allSubCats="subCategoryFiltered" />
-    <ProductPage   v-if="tab === 'product'"   :filtered="filtered" />
+    <DashboardPage v-if="tab === 'dashboard'" :filtered="filtered" :prevFiltered="prevFiltered" :category="category" :allSubCats="subCategoryFiltered" />
+    <ProductPage   v-if="tab === 'product'"   :filtered="filtered" :prevFiltered="prevFiltered" />
   </main>
 </template>
 
@@ -57,28 +58,56 @@ const category = ref("all");
 const quickDays = ref(1);
 
 const filtered = computed(() =>
-  payload.records.filter((row) => {
-    if (startDate.value && row.date < startDate.value) return false;
-    if (endDate.value && row.date > endDate.value) return false;
-    if (category.value !== "all" && row.category !== category.value) return false;
+  payload.records.filter(r => {
+    if (startDate.value && r.date < startDate.value) return false;
+    if (endDate.value && r.date > endDate.value) return false;
+    if (category.value !== "all" && r.category !== category.value) return false;
     return true;
   })
 );
 
 const subCategoryFiltered = computed(() =>
-  payload.subCategoryRecords.filter((row) => {
-    if (startDate.value && row.date < startDate.value) return false;
-    if (endDate.value && row.date > endDate.value) return false;
-    if (category.value !== "all" && row.category !== category.value) return false;
+  payload.subCategoryRecords.filter(r => {
+    if (startDate.value && r.date < startDate.value) return false;
+    if (endDate.value && r.date > endDate.value) return false;
+    if (category.value !== "all" && r.category !== category.value) return false;
     return true;
   })
 );
+
+// ─── 环比（同期对比） ───
+const periodDays = computed(() => {
+  if (!startDate.value || !endDate.value) return 0;
+  return Math.ceil((new Date(endDate.value) - new Date(startDate.value)) / 86400000) + 1;
+});
+const prevStart = computed(() => {
+  if (!startDate.value) return null;
+  const d = new Date(startDate.value); d.setDate(d.getDate() - periodDays.value);
+  return d.toISOString().slice(0, 10);
+});
+const prevEnd = computed(() => {
+  if (!startDate.value) return null;
+  const d = new Date(startDate.value); d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+});
+const prevLabel = computed(() => {
+  if (!prevStart.value || !prevEnd.value) return '';
+  return `环比: ${prevStart.value} ~ ${prevEnd.value}`;
+});
+const prevFiltered = computed(() => {
+  if (!prevStart.value || !prevEnd.value) return [];
+  return payload.records.filter(r => {
+    if (r.date < prevStart.value) return false;
+    if (r.date > prevEnd.value) return false;
+    if (category.value !== "all" && r.category !== category.value) return false;
+    return true;
+  });
+});
 
 const dataRangeLabel = computed(() => {
   if (!payload.dateMin || !payload.dateMax) return "暂无数据";
   return `${payload.dateMin} ~ ${payload.dateMax}`;
 });
-
 const generatedAtLabel = computed(() => {
   if (!payload.generatedAt) return "未生成";
   return payload.generatedAt.replace("T", " ");
@@ -88,10 +117,12 @@ function setQuickRange(days) {
   quickDays.value = days;
   if (!payload.dateMax) return;
   const end = new Date(payload.dateMax);
-  const start = days === 0
-    ? new Date(payload.dateMin)
+  const start = days === 0 ? new Date(payload.dateMin)
     : (() => { const s = new Date(end); s.setDate(s.getDate() - days + 1); return s; })();
   startDate.value = start.toISOString().slice(0, 10);
   endDate.value = end.toISOString().slice(0, 10);
 }
 </script>
+<style scoped>
+.huanbi-label { font-size: 12px; color: #888; white-space: nowrap; padding: 6px 10px; background: #f0f2f5; border-radius: 4px; }
+</style>

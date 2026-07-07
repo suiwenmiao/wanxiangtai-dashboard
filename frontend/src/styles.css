@@ -160,3 +160,10 @@ tr:hover td { background: #f8f9fa; }
 .summary-line .highlight-red { color: #e74c3c; font-weight: 700; }
 .summary-line .highlight-blue { color: #667eea; font-weight: 700; }
 .summary-icon { margin-right: 6px; }
+
+/* ── KPI change indicator ── */
+.kpi-change { font-size: 13px; margin-top: 8px; display: flex; align-items: center; gap: 4px; }
+.kpi-change .arrow { font-size: 16px; }
+.kpi-change.up { color: #e74c3c; }
+.kpi-change.down { color: #27ae60; }
+.kpi-change.flat { color: #999; }
