@@ -156,6 +156,30 @@ def build_subject_date_records(df: pd.DataFrame) -> list[dict]:
         })
     return result
 
+def build_category_scenario_records(df: pd.DataFrame) -> list[dict]:
+    """Aggregate by date + category + scenario for accurate channel summary."""
+    df = df[df["场景名字"].notna() & (df["场景名字"] != "")]
+    groups = df.groupby(["日期", "品类", "场景名字"], as_index=False).agg(
+        cost=("花费", "sum"),
+        totalSales=("总成交金额", "sum"),
+        clicks=("点击量", "sum"),
+        impressions=("展现量", "sum"),
+        orders=("总成交笔数", "sum"),
+    )
+    result = []
+    for _, r in groups.iterrows():
+        result.append({
+            "date": str(r["日期"]),
+            "category": str(r["品类"]),
+            "scenario": str(r["场景名字"]),
+            "cost": round(float(r["cost"]), 2),
+            "totalSales": round(float(r["totalSales"]), 2),
+            "clicks": int(r["clicks"]),
+            "impressions": int(r["impressions"]),
+            "orders": int(r["orders"]),
+        })
+    return result
+
 def main() -> None:
     print("=" * 50)
     print("生成 Vue 看板数据（含细类 + 主体）")
@@ -166,6 +190,7 @@ def main() -> None:
     subCategoryRecords = build_sub_category_records(df)
     subjects = build_subjects(df)
     subjectDateRecords = build_subject_date_records(df)
+    categoryScenarioRecords = build_category_scenario_records(df)
 
     payload = {
         "generatedAt": datetime.now().isoformat(timespec="seconds"),
@@ -176,6 +201,7 @@ def main() -> None:
         "subCategoryRecords": subCategoryRecords,
         "subjects": subjects,
         "subjectDateRecords": subjectDateRecords,
+        "categoryScenarioRecords": categoryScenarioRecords,
     }
 
     FRONTEND_DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -188,6 +214,7 @@ def main() -> None:
     print(f"  细类记录: {len(subCategoryRecords)}")
     print(f"  主体: {len(subjects)}")
     print(f"  主体日期记录: {len(subjectDateRecords)}")
+    print(f"  品类场景记录: {len(categoryScenarioRecords)}")
     print(f"  文件大小: {size_kb:.1f} KB")
 
 

@@ -145,31 +145,27 @@ function hbText(v) { if (v == null) return ''; return (v > 0 ? '+' : '') + v.toF
 
 // Channel scenario summary — estimate date-filtered metrics from subjects' full-period scenario proportions
 const scenarioSummary = computed(() => {
-  function build(subjectList) {
-    const fullMap = {};
-    for (const s of payload.subjects) { if (s.cost > 0) fullMap[s.subjectId] = s; }
+  const dates = new Set(props.filtered.map(r => r.date));
+  const allDates = dates.size >= payload.records.length;
+  const cats = new Set(props.filtered.map(r => r.category));
+  const isAllCats = cats.size >= payload.categories.length;
+  function aggregate(records) {
     const agg = {};
-    for (const subject of subjectList) {
-      const full = fullMap[subject.subjectId];
-      if (!full || full.cost === 0) continue;
-      const ratio = subject.cost / full.cost;
-      if (ratio <= 0) continue;
-      for (const sc of full.scenarios) {
-        if (!sc.scenario) continue;
-        if (!agg[sc.scenario]) agg[sc.scenario] = { scenario:sc.scenario, cost:0, totalSales:0, clicks:0, impressions:0, orders:0 };
-        const a = agg[sc.scenario];
-        a.cost += sc.cost * ratio;
-        a.totalSales += (sc.totalSales||0) * ratio;
-      a.clicks += Math.round((sc.clicks||0) * ratio);
-      a.impressions += Math.round((sc.impressions||0) * ratio);
-      a.orders += Math.round((sc.orders||0) * ratio);
-    }
+    for (const r of records) {
+      if (!r.scenario) continue;
+      if (!agg[r.scenario]) agg[r.scenario] = { scenario: r.scenario, cost: 0, totalSales: 0, clicks: 0, impressions: 0, orders: 0 };
+      const a = agg[r.scenario];
+      a.cost += r.cost;
+      a.totalSales += r.totalSales;
+      a.clicks += r.clicks;
+      a.impressions += r.impressions;
+      a.orders += r.orders;
     }
     const totalCost = Object.values(agg).reduce((s, a) => s + a.cost, 0);
     return Object.values(agg).map(a => ({
       scenario: a.scenario,
-      cost: Math.round(a.cost*100)/100,
-      totalSales: Math.round(a.totalSales*100)/100,
+      cost: Math.round(a.cost * 100) / 100,
+      totalSales: Math.round(a.totalSales * 100) / 100,
       costPct: totalCost > 0 ? a.cost / totalCost * 100 : 0,
       roi: a.cost > 0 ? a.totalSales / a.cost : 0,
       cvr: a.clicks > 0 ? a.orders / a.clicks : 0,
@@ -177,37 +173,21 @@ const scenarioSummary = computed(() => {
       cpc: a.clicks > 0 ? a.cost / a.clicks : 0,
     })).sort((a, b) => b.cost - a.cost);
   }
-  const current = build(displaySubjects.value);
-  // Previous period subjects
-  let prevList = [];
-  if (props.prevFiltered.length) {
+  let curRecs = payload.categoryScenarioRecords;
+  if (!isAllCats && cats.size > 0) curRecs = curRecs.filter(r => cats.has(r.category));
+  if (!allDates && dates.size > 0) curRecs = curRecs.filter(r => dates.has(r.date));
+  const current = aggregate(curRecs);
+  let prevRecs = props.prevFiltered.length ? [...payload.categoryScenarioRecords] : [];
+  if (prevRecs.length) {
     const prevDates = new Set(props.prevFiltered.map(r => r.date));
-    const prevCats = new Set(props.prevFiltered.map(r => r.category));
-    const prevAllCats = prevCats.size >= payload.categories.length;
-    if (payload.subjectDateRecords && prevDates.size > 0 && prevDates.size < payload.records.length) {
-      const sdr = payload.subjectDateRecords.filter(r => prevDates.has(r.date));
-      const agg = {};
-      for (const r of sdr) {
-        if (!agg[r.subjectId]) agg[r.subjectId] = { cost:0, totalSales:0, clicks:0, impressions:0 };
-        const a = agg[r.subjectId]; a.cost += r.cost; a.totalSales += r.totalSales; a.clicks += r.clicks; a.impressions += r.impressions;
-      }
-      const metaMap = {};
-      for (const s of payload.subjects) metaMap[s.subjectId] = s;
-      prevList = Object.entries(agg).map(([sid, m]) => {
-        const meta = metaMap[sid]; if (!meta) return null;
-        if (!prevAllCats && prevCats.size > 0 && !prevCats.has(meta.category)) return null;
-        return { ...meta, cost:Math.round(m.cost*100)/100, totalSales:Math.round(m.totalSales*100)/100, clicks:m.clicks, impressions:m.impressions };
-      }).filter(Boolean);
-    } else {
-      prevList = payload.subjects.filter(s => prevAllCats || prevCats.has(s.category));
-    }
+    if (!isAllCats && cats.size > 0) prevRecs = prevRecs.filter(r => cats.has(r.category));
+    if (prevDates.size > 0) prevRecs = prevRecs.filter(r => prevDates.has(r.date));
   }
-  const prev = prevList.length ? build(prevList) : [];
-  const prevMap = {};
-  for (const p of prev) prevMap[p.scenario] = p;
+  const prev = prevRecs.length ? aggregate(prevRecs) : [];
+  const pm = {}; for (const p of prev) pm[p.scenario] = p;
   return current.map(c => {
-    const p = prevMap[c.scenario];
-    return { ...c, costHb: p ? (p.cost>0 ? (c.cost-p.cost)/p.cost*100 : 0) : null, ctrHb: p ? c.ctr-p.ctr : null, cvrHb: p ? c.cvr-p.cvr : null };
+    const p = pm[c.scenario];
+    return { ...c, costHb: p ? (p.cost > 0 ? (c.cost - p.cost) / p.cost * 100 : 0) : null, ctrHb: p ? c.ctr - p.ctr : null, cvrHb: p ? c.cvr - p.cvr : null };
   });
 });
 const displaySubjects = computed(() => {
