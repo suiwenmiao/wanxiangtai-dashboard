@@ -8,9 +8,14 @@
         <div v-if="hb" class="kpi-change" :class="changeClass(hb.cost)"><span class="arrow">{{ hb.cost > 0 ? '↑' : hb.cost < 0 ? '↓' : '' }}</span>{{ hbText(hb.cost) }} 环比</div>
       </div>
       <div class="kpi-card sales">
-        <div class="kpi-label">总成交</div>
+        <div class="kpi-label">总成交金额</div>
         <div class="kpi-value">¥{{ formatMoney(totals.totalSales) }}</div>
         <div v-if="hb" class="kpi-change" :class="changeClass(hb.totalSales)"><span class="arrow">{{ hb.totalSales > 0 ? '↑' : hb.totalSales < 0 ? '↓' : '' }}</span>{{ hbText(hb.totalSales) }} 环比</div>
+      </div>
+      <div class="kpi-card ctr">
+        <div class="kpi-label">点击率</div>
+        <div class="kpi-value">{{ formatPercent(totals.ctr) }}</div>
+        <div v-if="hb" class="kpi-change" :class="changeClass(hb.ctr)"><span class="arrow">{{ hb.ctr > 0 ? '↑' : hb.ctr < 0 ? '↓' : '' }}</span>{{ hb.ctr > 0 ? '+' : '' }}{{ (hb.ctr * 100).toFixed(2) }}pp 环比</div>
       </div>
       <div class="kpi-card droi">
         <div class="kpi-label">直接 ROI</div>
@@ -22,10 +27,10 @@
         <div class="kpi-value">{{ totals.totalRoi.toFixed(2) }}</div>
         <div v-if="hb" class="kpi-change" :class="changeClass(hb.totalRoi)"><span class="arrow">{{ hb.totalRoi > 0 ? '↑' : hb.totalRoi < 0 ? '↓' : '' }}</span>{{ hb.totalRoi > 0 ? '+' : '' }}{{ hb.totalRoi.toFixed(2) }} 环比</div>
       </div>
-      <div class="kpi-card cvr">
-        <div class="kpi-label">转化率</div>
-        <div class="kpi-value">{{ formatPercent(totals.cvr) }}</div>
-        <div v-if="hb" class="kpi-change" :class="changeClass(hb.cvr)"><span class="arrow">{{ hb.cvr > 0 ? '↑' : hb.cvr < 0 ? '↓' : '' }}</span>{{ hb.cvr > 0 ? '+' : '' }}{{ (hb.cvr * 100).toFixed(2) }}pp 环比</div>
+      <div class="kpi-card cpc">
+        <div class="kpi-label">CPC</div>
+        <div class="kpi-value">¥{{ totals.cpc.toFixed(2) }}</div>
+        <div v-if="hb" class="kpi-change" :class="changeClass(hb.cpc)"><span class="arrow">{{ hb.cpc > 0 ? '↑' : hb.cpc < 0 ? '↓' : '' }}</span>{{ hbText(hb.cpc) }} 环比</div>
       </div>
     </div>
 
@@ -44,40 +49,52 @@
       <div class="chart-container"><div class="chart-title">推广场景花费占比</div><EChart :option="pieOption" /></div>
     </div>
 
-    <!-- Tables -->
+    <!-- Combined Table -->
     <div class="panel-table">
-      <div class="chart-title">品类效果明细</div>
+      <div class="chart-title">{{ selectedCategory ? selectedCategory + ' — 细类明细' : '品类效果明细' }}</div>
       <div class="table-wrap"><table>
-        <thead><tr><th>品类</th><th class="num">花费</th><th class="num">成交金额</th><th class="num">总 ROI</th><th class="num">点击</th><th class="num">展现</th><th class="num">转化率</th><th class="num">CPC</th></tr></thead>
+        <thead><tr>
+          <th>{{ selectedCategory ? '细类' : '品类' }}</th>
+          <th class="num">花费</th>
+          <th class="num">总成交金额</th>
+          <th class="num">ROI</th>
+          <th class="num">点击率</th>
+          <th class="num">转化率</th>
+          <th class="num">CPC</th>
+        </tr></thead>
         <tbody>
-          <tr v-for="row in categoryRows" :key="row.category">
-            <td><strong>{{ row.category }}</strong></td>
-            <td class="num">¥{{ formatMoney(row.cost) }}</td>
-            <td class="num">¥{{ formatMoney(row.totalSales) }}</td>
-            <td :class="['num', roiClass(row.totalRoi)]">{{ row.totalRoi.toFixed(2) }}</td>
-            <td class="num">{{ row.clicks.toLocaleString() }}</td>
-            <td class="num">{{ row.impressions.toLocaleString() }}</td>
-            <td class="num">{{ formatPercent(row.cvr) }}</td>
-            <td class="num">¥{{ row.cpc.toFixed(2) }}</td>
-          </tr>
-          <tr v-if="categoryRows.length === 0"><td colspan="8" class="empty">暂无数据</td></tr>
-        </tbody>
-      </table></div>
-    </div>
-
-    <div class="panel-table sub-section" v-if="selectedCategory && subRows.length > 0">
-      <div class="chart-title">{{ selectedCategory }} — 细类明细</div>
-      <div class="table-wrap"><table>
-        <thead><tr><th>细类</th><th class="num">花费</th><th class="num">成交金额</th><th class="num">总 ROI</th><th class="num">点击</th><th class="num">展现</th></tr></thead>
-        <tbody>
-          <tr v-for="row in subRows" :key="row.subCategory">
-            <td>{{ row.subCategory }}</td>
-            <td class="num">¥{{ formatMoney(row.cost) }}</td>
-            <td class="num">¥{{ formatMoney(row.totalSales) }}</td>
-            <td :class="['num', roiClass(row.totalRoi)]">{{ row.totalRoi.toFixed(2) }}</td>
-            <td class="num">{{ row.clicks.toLocaleString() }}</td>
-            <td class="num">{{ row.impressions.toLocaleString() }}</td>
-          </tr>
+          <template v-if="selectedCategory">
+            <tr v-for="row in subRows" :key="row.subCategory">
+              <td>{{ row.subCategory }}</td>
+              <td class="num">¥{{ formatMoney(row.cost) }}</td>
+              <td class="num">¥{{ formatMoney(row.totalSales) }}</td>
+              <td :class="['num', roiClass(row.totalRoi)]">{{ row.totalRoi.toFixed(2) }}</td>
+              <td class="num">{{ formatPercent(row.ctr) }}</td>
+              <td class="num">{{ formatPercent(row.cvr) }}</td>
+              <td class="num">¥{{ row.cpc.toFixed(2) }}</td>
+            </tr>
+            <tr class="summary-row" v-if="subRows.length > 0">
+              <td><strong>{{ selectedCategory }}</strong></td>
+              <td class="num"><strong>¥{{ formatMoney(categoryTotal.cost) }}</strong></td>
+              <td class="num"><strong>¥{{ formatMoney(categoryTotal.totalSales) }}</strong></td>
+              <td :class="['num', roiClass(categoryTotal.totalRoi)]"><strong>{{ categoryTotal.totalRoi.toFixed(2) }}</strong></td>
+              <td class="num"><strong>{{ formatPercent(categoryTotal.ctr) }}</strong></td>
+              <td class="num"><strong>{{ formatPercent(categoryTotal.cvr) }}</strong></td>
+              <td class="num"><strong>¥{{ categoryTotal.cpc.toFixed(2) }}</strong></td>
+            </tr>
+          </template>
+          <template v-else>
+            <tr v-for="row in categoryRows" :key="row.category">
+              <td><strong>{{ row.category }}</strong></td>
+              <td class="num">¥{{ formatMoney(row.cost) }}</td>
+              <td class="num">¥{{ formatMoney(row.totalSales) }}</td>
+              <td :class="['num', roiClass(row.totalRoi)]">{{ row.totalRoi.toFixed(2) }}</td>
+              <td class="num">{{ formatPercent(row.ctr) }}</td>
+              <td class="num">{{ formatPercent(row.cvr) }}</td>
+              <td class="num">¥{{ row.cpc.toFixed(2) }}</td>
+            </tr>
+          </template>
+          <tr v-if="(selectedCategory ? subRows.length : categoryRows.length) === 0"><td colspan="7" class="empty">暂无数据</td></tr>
         </tbody>
       </table></div>
     </div>
@@ -107,6 +124,8 @@ const hb = computed(() => {
     directRoi: t.directRoi - p.directRoi,
     totalRoi: t.totalRoi - p.totalRoi,
     cvr: t.cvr - p.cvr,
+    ctr: t.ctr - p.ctr,
+    cpc: p.cpc > 0 ? (t.cpc - p.cpc) / p.cpc * 100 : 0,
   };
 });
 function changeClass(v) { if (v == null) return ''; return v > 0 ? 'up' : v < 0 ? 'down' : 'flat'; }
@@ -156,8 +175,10 @@ const subRows = computed(() => {
     const a = agg[key]; a.cost += r.cost; a.totalSales += r.totalSales; a.directSales += r.directSales;
     a.clicks += r.clicks; a.impressions += r.impressions; a.orders += r.orders; a.carts += r.carts;
   }
-  return Object.values(agg).map(r => ({ ...r, cost: Math.round(r.cost * 100) / 100, totalSales: Math.round(r.totalSales * 100) / 100, totalRoi: r.cost > 0 ? r.totalSales / r.cost : 0 })).sort((a, b) => b.cost - a.cost);
+  return Object.values(agg).map(r => ({ ...r, cost: Math.round(r.cost * 100) / 100, totalSales: Math.round(r.totalSales * 100) / 100, totalRoi: r.cost > 0 ? r.totalSales / r.cost : 0, ctr: r.impressions > 0 ? r.clicks / r.impressions : 0, cvr: r.clicks > 0 ? r.orders / r.clicks : 0, cpc: r.clicks > 0 ? r.cost / r.clicks : 0 })).sort((a, b) => b.cost - a.cost);
 });
+
+const categoryTotal = computed(() => { if (!selectedCategory.value) return null; return categoryRows.value.find(r => r.category === selectedCategory.value); });
 
 function roiClass(v) { return v >= 3 ? "roi-good" : v < 1 ? "roi-risk" : ""; }
 

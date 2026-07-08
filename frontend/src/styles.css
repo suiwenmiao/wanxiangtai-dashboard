@@ -53,7 +53,7 @@ button { cursor: pointer; }
 .btn-quick:hover, .btn-quick.active { background: #667eea; color: #fff; border-color: #667eea; }
 
 /* ── KPI row ── */
-.kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 20px; }
+.kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; margin-bottom: 20px; }
 .kpi-card {
   background: #fff; border-radius: 10px; padding: 20px 24px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.06); position: relative; overflow: hidden;
@@ -67,8 +67,10 @@ button { cursor: pointer; }
 .kpi-card.troi::before { background: #96ceb4; }
 .kpi-card.cvr::before { background: #ffeaa7; }
 .kpi-card.click::before { background: #ff9ff3; }
+.kpi-card.ctr::before { background: #74b9ff; }
+.kpi-card.cpc::before { background: #fdcb6e; }
 .kpi-label { font-size: 13px; color: #888; margin-bottom: 8px; }
-.kpi-value { font-size: 28px; font-weight: 700; color: #333; }
+.kpi-value { font-size: 28px; font-weight: 700; color: #333; white-space: nowrap; }
 .kpi-unit { font-size: 14px; font-weight: 400; color: #999; margin-left: 4px; }
 
 /* ── Charts ── */
@@ -111,6 +113,8 @@ tbody tr:hover td { background: #eef1f8; }
 
 /* ── Sub-category section ── */
 .sub-section { margin-top: 20px; }
+/* ── Summary row ── */
+.summary-row td { border-top: 2px solid #667eea; background: #f8f9ff !important; }
 
 /* ── Subject detail ── */
 .subject-click { cursor: pointer; color: #667eea; font-weight: 600; }
