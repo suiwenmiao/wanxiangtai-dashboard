@@ -97,12 +97,13 @@ def build_subjects(df: pd.DataFrame) -> list[dict]:
         s["directSales"] += r["直接成交金额"]; s["orders"] += r["总成交笔数"]
         s["clicks"] += r["点击量"]; s["impressions"] += r["展现量"]
         s["carts"] += r["总购物车数"]
-        if not r.get("场景名字", ""):
-            continue
-        scene_key = f"{r.get('场景名字','')}|{r.get('计划名字','')}"
+        scene_name = r.get("场景名字", "")
+        if pd.isna(scene_name) or not str(scene_name).strip():
+            scene_name = "未分类"
+        scene_key = f"{scene_name}|{r.get('计划名字','')}"
         if scene_key not in s["scenarios"]:
             s["scenarios"][scene_key] = {
-                "scenario": str(r.get("场景名字", "")),
+                "scenario": scene_name,
                 "planName": str(r.get("计划名字", "")),
                 "cost": 0, "totalSales": 0, "clicks": 0, "impressions": 0,
                 "orders": 0,
@@ -158,7 +159,7 @@ def build_subject_date_records(df: pd.DataFrame) -> list[dict]:
 
 def build_category_scenario_records(df: pd.DataFrame) -> list[dict]:
     """Aggregate by date + category + scenario for accurate channel summary."""
-    df = df[df["场景名字"].notna() & (df["场景名字"] != "")]
+    df.loc[df["场景名字"].isna() | (df["场景名字"] == ""), "场景名字"] = "未分类"
     groups = df.groupby(["日期", "品类", "场景名字"], as_index=False).agg(
         cost=("花费", "sum"),
         totalSales=("总成交金额", "sum"),

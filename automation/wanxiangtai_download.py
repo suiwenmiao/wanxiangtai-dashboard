@@ -267,8 +267,23 @@ async def do_download():
             log(f"\n[步骤2] 日期范围保持'过去 7 天'，下载时会在弹窗中调整")
             # 注：日期范围会影响弹窗里的默认值，但弹窗可以手动调整
 
-            # ========== 步骤3: 点击"下载报表"按钮 ==========
-            log(f"\n[步骤3] 点击'下载报表'按钮...")
+            # ========== 步骤3: 切换报表维度为"按计划/场景" ==========
+            log(f"\n[步骤3] SKILL: 切换报表维度确保含场景/计划列（必须79列格式）...")
+            for dim_name in ["按计划", "按场景", "计划", "场景"]:
+                try:
+                    dim_btn = page.get_by_text(dim_name, exact=False).first
+                    if await dim_btn.is_visible(timeout=2000):
+                        await dim_btn.click(timeout=3000)
+                        log(f"✓ SKILL: 已选中维度 [{dim_name}]，保证导出含 场景ID/场景名字/计划ID/计划名字")
+                        await asyncio.sleep(2)
+                        break
+                except Exception:
+                    continue
+            else:
+                log("[WARN] SKILL: 未找到维度选择项，导出可能缺场景/计划列，请检查")
+
+            # ========== 步骤4: 点击"下载报表"按钮 ==========
+            log(f"\n[步骤4] 点击'下载报表'按钮...")
             download_btn = page.get_by_text(BTN_DOWNLOAD_REPORT, exact=True).first
             try:
                 await download_btn.scroll_into_view_if_needed(timeout=5000)
@@ -290,8 +305,8 @@ async def do_download():
             await asyncio.sleep(5)
             await page.screenshot(path=str(SCREENSHOT_DIR / "02_dialog.png"))
 
-            # ========== 步骤4: 在弹窗中点击"确定" ==========
-            log(f"\n[步骤4] 在弹窗中点击'确定'...")
+            # ========== 步骤5: 在弹窗中点击"确定" ==========
+            log(f"\n[步骤5] 在弹窗中点击'确定'...")
             confirm_clicked = False
             for sel_text in [BTN_CONFIRM, "确认", "提交", "开始下载"]:
                 try:
