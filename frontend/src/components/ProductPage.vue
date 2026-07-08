@@ -315,25 +315,50 @@ function roiRowClass(s) { return s.totalRoi < 0.5 ? 'row-danger' : s.totalRoi >=
 function roiClass(v) { return v >= 3 ? "roi-good" : v < 1 ? "roi-risk" : ""; }
 
 function getScenarioGroups(subject) {
-  // Look up full-period subject data and apply date-filtered ratio
-  const full = payload.subjects.find(s => s.subjectId === subject.subjectId);
-  if (!full || full.cost === 0) return [];
-  const ratio = subject.cost / full.cost;
-  const groups = {};
-  for (const sc of full.scenarios) {
-    if (!sc.scenario) continue;
-    const ec = sc.cost * ratio;
-    const es = (sc.totalSales||0) * ratio;
-    const ecl = Math.round((sc.clicks||0) * ratio);
-    const eim = Math.round((sc.impressions||0) * ratio);
-    const eo = Math.round((sc.orders||0) * ratio);
-    const roi = ec > 0 ? es / ec : 0;
-    if (!groups[sc.scenario]) groups[sc.scenario] = { scenario: sc.scenario, plans: [], cost: 0, totalSales: 0, clicks: 0, impressions: 0 };
-    const g = groups[sc.scenario];
-    g.plans.push({ scenario: sc.scenario, planName: sc.planName, cost: Math.round(ec*100)/100, totalSales: Math.round(es*100)/100, clicks: ecl, impressions: eim, orders: eo, totalRoi: roi });
-    g.cost += ec; g.totalSales += es; g.clicks += ecl; g.impressions += eim;
+  // Filter subjectPlanRecords by subjectId and selected dates
+  const dates = new Set(props.filtered.map(r => r.date));
+  const allDates = dates.size >= payload.records.length;
+  let records = payload.subjectPlanRecords.filter(r => r.subjectId === subject.subjectId);
+  if (!allDates && dates.size > 0) {
+    records = records.filter(r => dates.has(r.date));
   }
-  return Object.values(groups).map(g => ({ ...g, cost: Math.round(g.cost*100)/100, totalSales: Math.round(g.totalSales*100)/100, roi: g.cost > 0 ? g.totalSales / g.cost : 0 }));
+  if (records.length === 0) return [];
+  // Aggregate by planId (unique across scenarios)
+  const planMap = {};
+  for (const r of records) {
+    if (!planMap[r.planId]) {
+      planMap[r.planId] = { scenario: r.scenario, planName: r.planName, cost: 0, totalSales: 0, clicks: 0, impressions: 0, orders: 0 };
+    }
+    const p = planMap[r.planId];
+    p.cost += r.cost;
+    p.totalSales += r.totalSales;
+    p.clicks += r.clicks;
+    p.impressions += r.impressions;
+    p.orders += r.orders;
+  }
+  // Group by scenario
+  const groups = {};
+  for (const plan of Object.values(planMap)) {
+    if (!groups[plan.scenario]) {
+      groups[plan.scenario] = { scenario: plan.scenario, plans: [], cost: 0, totalSales: 0, clicks: 0, impressions: 0 };
+    }
+    const g = groups[plan.scenario];
+    const pd = {
+      scenario: plan.scenario, planName: plan.planName,
+      cost: Math.round(plan.cost * 100) / 100,
+      totalSales: Math.round(plan.totalSales * 100) / 100,
+      clicks: Math.round(plan.clicks), impressions: Math.round(plan.impressions),
+      orders: Math.round(plan.orders),
+      totalRoi: plan.cost > 0 ? plan.totalSales / plan.cost : 0,
+    };
+    g.plans.push(pd);
+    g.cost += pd.cost; g.totalSales += pd.totalSales; g.clicks += pd.clicks; g.impressions += pd.impressions;
+  }
+  return Object.values(groups).map(g => ({
+    ...g, cost: Math.round(g.cost * 100) / 100,
+    totalSales: Math.round(g.totalSales * 100) / 100,
+    roi: g.cost > 0 ? g.totalSales / g.cost : 0,
+  }));
 }
 
 function toggleDetail(id) { expandedId.value = expandedId.value === id ? null : id; }
