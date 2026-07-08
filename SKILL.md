@@ -1,5 +1,57 @@
 # 万相台每日数据下载标准流程 (SKILL)
 
+## 8. 数据计算核心原则：绝不估算
+
+### 8.1 铁律
+**所有展示在看板上的数据，必须是在筛选时间范围内对原始数据进行实际分类求和的结果，绝不允许使用比例推算、分摊、按权重缩放等任何形式的估算。**
+
+估算 = 错误。不可接受。
+
+### 8.2 正确的计算方式
+数据流水线按所需维度（日期、品类、主体、计划、场景等）对原始行数据进行 `groupby + sum` 聚合，生成预汇总数据。前端仅做过滤过滤求和（filter + reduce），不做任何比例计算。
+
+```
+原始大表（63,911行，含日期+品类+主体+场景+计划）
+  ↓
+实际汇总（按筛选维度 groupby + sum）
+  ↓
+前端直接过滤求和
+```
+
+### 8.3 哪些地方用了实际汇总（正确 ✓）
+| 数据源 | 分组维度 | 记录数 | 用途 |
+|---|---|---|---|
+| `records` | 日期 + 品类 | 1,082 | 第一页 KPI / 趋势图 / 品类表 |
+| `categoryScenarioRecords` | 日期 + 品类 + 场景名字 | 3,098 | 渠道推广概览、饼图 |
+| `subCategoryRecords` | 日期 + 品类 + 细类 | 5,498 | 细类下钻 |
+| `subjectDateRecords` | 日期 + 主体ID | 23,647 | 第二页主体表 |
+| `subjectPlanRecords` | 日期 + 主体ID + 计划ID | **63,911** | **展开计划详情** |
+
+### 8.4 哪些情况容易误用估算（错误 ✗）
+| 错误做法 | 说明 | 正确做法 |
+|---|---|---|
+| `ratio = subject.cost / full.cost; plan.cost * ratio` | 用全周期计划花费按比例推算筛选期的花费 | 预汇总 `subjectPlanRecords`，前端直接过滤 |
+| `subject.orders × (scenario.cost / subject.cost)` | 用主体总订单按花费占比分摊到场景 | 场景订单直接在数据流水线中 `sum` |
+| `scenario.clicks * (subject.cost / full.cost)` | 用全周期场景点击量按花费比例缩放 | 场景点击量在 `categoryScenarioRecords` 中实际汇总 |
+
+### 8.5 如何判断是否正确
+1. 检查数据流水线：是否在 `build_xxx` 函数中用 `groupby + sum` 预汇总
+2. 检查前端：`getScenarioGroups`、`scenarioSummary` 等函数是否直接用 `payload.xxxRecords` 做 `filter + reduce`，不出现 `* ratio` 或 `/ full.cost` 等比例表达式
+3. 验证方法：选「全部」日期范围时，汇总后数据必须等于原始数据直接求和（`差异=0`）
+
+### 8.6 新增维度时的标准流程
+当需要按新的维度（如计划、细类、场景等）展示数据时：
+
+1. **数据流水线**：在 `generate_dashboard_data.py` 中新增 `build_xxx_records(df)` 函数，用 `pandas.groupby([维度列]) + agg(sum)` 做实际汇总
+2. **JSON 字段**：将结果加入 payload
+3. **前端**：组件中直接用 `payload.xxxRecords.filter(...).reduce(...)` 获取数据
+4. **禁止**：在前端或数据流水线中用全周期数据乘以比值来推算筛选期数据
+
+### 8.7 检查清单
+- [ ] `getScenarioGroups` 无 `ratio = subject.cost / full.cost`
+- [ ] `scenarioSummary` 直接使用 `categoryScenarioRecords`
+- [ ] 所有 `build_*` 函数只做 `groupby + sum`，不做比例运算
+- [ ] `displaySubjects` 的 `orders` 来自 `subjectDateRecords`（日期筛选后），不是 `...meta`（全周期）
 ## 1. 目的
 确保每天下载的万相台报表格式与看板数据流水线一致，避免因数据格式不匹配导致的场景数据丢失。
 
