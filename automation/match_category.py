@@ -8,10 +8,11 @@ import pandas as pd
 
 from config import BASE_TABLE_PATH, REPORT_DIR
 
-# 找最新的UTF-8 CSV文件
-csv_files = sorted(REPORT_DIR.glob("*_utf8.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
+# 找最新的CSV文件（优先最新格式，再fallback旧格式）
+csv_files = sorted(REPORT_DIR.glob("万相台商品报表_*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
 if not csv_files:
-    # 如果没有UTF-8版本，尝试用GBK读取原始ZIP解压的CSV
+    csv_files = sorted(REPORT_DIR.glob("*_utf8.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
+if not csv_files:
     csv_files = sorted(REPORT_DIR.glob("商品报表_*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
 
 if not csv_files:
@@ -34,7 +35,16 @@ print(f"  基础表行数: {len(df_base)}")
 print(f"  基础表列名: {list(df_base.columns)}")
 
 print("\n正在读取万相台报表...")
-df_report = pd.read_csv(CSV_PATH, encoding="utf-8-sig")
+# Try multiple encodings (下载格式可能使用GBK)
+for enc in ["utf-8-sig", "utf-8", "gb18030", "gbk"]:
+    try:
+        df_report = pd.read_csv(CSV_PATH, encoding=enc)
+        print(f"  使用编码: {enc}")
+        break
+    except Exception:
+        continue
+else:
+    raise SystemExit(f"[ERROR] 无法读取CSV文件: {CSV_PATH}")
 print(f"  报表行数: {len(df_report)}")
 print(f"  报表列数: {len(df_report.columns)}")
 
