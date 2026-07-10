@@ -222,16 +222,16 @@ const displaySubjects = computed(() => {
 
 // Category-specific ROI thresholds per industry experience
 const THRESHOLDS = {
-  'DT':  { good: 6, ok: 3.5, warn: 2.5 },  // 台式机: 高客单，整体ROI偏高
-  'NB':  { good: 6, ok: 3.5, warn: 2.5 },  // 笔记本: 同DT
-  'IP':  { good: 4.5, ok: 3, warn: 2 },    // 平板配件: 中等客单
-  '平板': { good: 4, ok: 2.5, warn: 1.5 },
-  '手机': { good: 4, ok: 2.5, warn: 1.5 },
-  '显示器': { good: 3.5, ok: 2.5, warn: 1.5 },
-  '服务': { good: 3, ok: 2, warn: 1.2 },   // 服务: 低客单高频率
-  '选件': { good: 3, ok: 2, warn: 1.2 },
-  'SIOT': { good: 3, ok: 2, warn: 1 },
-  '其他': { good: 3, ok: 2, warn: 1 },
+  'DT':  { good: 61, ok: 31, warn: 12 },   // 台式机: P50/P25/P10 历史数据
+  'NB':  { good: 57, ok: 28, warn: 11 },   // 笔记本: 同级别
+  '手机': { good: 10, ok: 3, warn: 1.5 },  // 手机: 整体ROI 15.81
+  '平板': { good: 30, ok: 15, warn: 3 },   // 平板: 整体ROI 37.84
+  '显示器': { good: 19, ok: 10, warn: 3 },  // 显示器: 整体ROI 32.07
+  '服务': { good: 4, ok: 3, warn: 1.8 },   // 服务: 整体ROI 6.61，低客单高频
+  '选件': { good: 19, ok: 9, warn: 3 },    // 选件: 整体ROI 22.64
+  'IP':  { good: 6, ok: 2, warn: 0.8 },    // 平板配件: 整体ROI 9.79
+  'SIOT': { good: 6, ok: 2, warn: 0.8 },
+  '其他': { good: 6, ok: 2, warn: 0.8 },
 };
 function getT(cat) { return THRESHOLDS[cat] || THRESHOLDS['其他']; }
 
