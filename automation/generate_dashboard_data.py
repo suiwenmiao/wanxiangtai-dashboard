@@ -28,6 +28,17 @@ def load_data() -> pd.DataFrame:
     df["日期"] = pd.to_datetime(df["日期"]).dt.strftime("%Y-%m-%d")
     df["品类"] = df["品类"].fillna("其他")
     df["细类"] = df["细类"].fillna("其他")
+    for col, default in {
+        "场景名字": "未分类",
+        "计划ID": "",
+        "计划名字": "未关联计划",
+    }.items():
+        if col not in df.columns:
+            df[col] = default
+        else:
+            df[col] = df[col].fillna(default)
+            if default:
+                df.loc[df[col].astype(str).str.strip() == "", col] = default
 
     for col in NUMERIC_COLS:
         if col not in df.columns:

@@ -5,14 +5,14 @@
 
 功能：
   - 首次扫码登录并保存登录态（cookie）
-  - 自动下载包含前一天数据的商品/计划报表到本地报表目录
+  - 自动下载包含前一天数据的商品报表到本地报表目录
   - 写入大表前只保留前一天数据，避免多日报表误覆盖历史数据
   - 支持断点续传：文件已存在则跳过
   - 支持登录态过期检测
 
 完整下载流程（异步任务模式）：
   1. 访问商品报表页（item_promotion）
-  2. 切换到计划/场景明细维度
+  2. 保持商品报表/商品明细维度
   3. 点击"下载报表"按钮并记录弹窗里的精确任务名
   4. 点击"确定"创建下载任务
   5. 跳转到下载任务管理页
@@ -63,7 +63,16 @@ DOWNLOAD_LIST_URL = "https://one.alimama.com/index.html#!/report/download-list"
 # 关键文本
 BTN_DOWNLOAD_REPORT = "下载报表"
 BTN_CONFIRM = "确定"
-REQUIRED_DETAIL_COLUMNS = ["日期", "主体ID", "场景名字", "计划ID", "计划名字"]
+EXPECTED_TASK_PREFIX = "商品报表_"
+REQUIRED_DETAIL_COLUMNS = ["日期", "主体ID"]
+OPTIONAL_DETAIL_DEFAULTS = {
+    "场景ID": "",
+    "场景名字": "未分类",
+    "原二级场景ID": "",
+    "原二级场景名字": "",
+    "计划ID": "",
+    "计划名字": "未关联计划",
+}
 
 
 def log(msg):
@@ -150,6 +159,348 @@ async def task_snapshot(page) -> list[str]:
         return rows or []
     except Exception:
         return []
+
+
+async def click_download_report_button(page) -> bool:
+    """Click the page's download report button."""
+    download_btn = page.get_by_text(BTN_DOWNLOAD_REPORT, exact=True).first
+    try:
+        await download_btn.scroll_into_view_if_needed(timeout=5000)
+        log(f"按钮位置: {await download_btn.bounding_box()}")
+        await download_btn.click(timeout=5000)
+        log("已点击'下载报表'")
+        return True
+    except Exception as e:
+        log(f"点击失败: {e}")
+        try:
+            await page.get_by_role("button", name=BTN_DOWNLOAD_REPORT).first.click(timeout=5000)
+            log("已点击(通过 role)")
+            return True
+        except Exception as e2:
+            log(f"[ERROR] 无法找到'下载报表'按钮: {e2}")
+            await page.screenshot(path=str(SCREENSHOT_DIR / "no_download_btn.png"))
+            return False
+
+
+async def close_download_dialog(page) -> None:
+    """Close the current download dialog if it is open."""
+    for text in ["取消", "关闭"]:
+        try:
+            btn = page.get_by_role("button", name=text).first
+            if await btn.is_visible(timeout=1000):
+                await btn.click(timeout=3000)
+                await asyncio.sleep(1)
+                return
+        except Exception:
+            pass
+    try:
+        btn = page.locator(".ant-modal-close, [aria-label='Close']").first
+        if await btn.is_visible(timeout=1000):
+            await btn.click(timeout=3000)
+            await asyncio.sleep(1)
+    except Exception:
+        pass
+
+
+async def ensure_product_detail_dimension(page) -> bool:
+    """Select product detail dimension so exports include subjectId."""
+    log("尝试把明细维度切回商品，避免下载计划报表")
+    opened = await page.evaluate(
+        """
+() => {
+    const visible = el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const norm = text => (text || '').replace(/\\s+/g, '');
+    const candidates = Array.from(document.querySelectorAll('button, div, span, [role="button"], [role="combobox"]'))
+        .filter(visible)
+        .filter(el => {
+            const text = norm(el.textContent);
+            return text.includes('维度') && text.includes('计划');
+        })
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
+    const target = candidates[0];
+    if (!target) return {opened: false, reason: 'dimension_trigger_not_found'};
+    target.el.click();
+    return {opened: true, text: target.text};
+}
+"""
+    )
+    log(f"维度下拉打开结果: {opened}")
+    if not opened or not opened.get("opened"):
+        return False
+    await asyncio.sleep(1)
+
+    option_result = await page.evaluate(
+        """
+(labels) => {
+    const visible = el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const norm = text => (text || '').replace(/\\s+/g, '');
+    const targets = labels.map(norm);
+    const candidates = Array.from(document.querySelectorAll('[role="option"], li, div, span'))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .filter(item => targets.includes(item.text))
+        .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
+    const target = candidates[0];
+    if (!target) return {selected: false, reason: 'product_option_not_found'};
+    target.el.click();
+    return {selected: true, text: target.text};
+}
+""",
+        ["商品", "商品主体", "主体", "按商品"],
+    )
+    log(f"商品维度选择结果: {option_result}")
+    await asyncio.sleep(3)
+    return bool(option_result and option_result.get("selected"))
+
+
+async def set_dialog_date_to_yesterday(page, report_date: str) -> bool:
+    """Set the download dialog date range to yesterday."""
+    log(f"设置下载弹窗日期范围为昨天: {report_date}")
+    opened = await page.evaluate(
+        """
+() => {
+    const visible = el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const norm = text => (text || '').replace(/\\s+/g, '');
+    const modals = Array.from(document.querySelectorAll('.ant-modal, [role="dialog"], [class*="dialog"]'))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .filter(item => {
+            const area = item.rect.width * item.rect.height;
+            return area > 100000
+                && item.text.includes('下载报表')
+                && item.text.includes('日期范围')
+                && item.text.includes('文件名称');
+        });
+    let modal = modals.sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height))[0]?.el;
+    if (!modal) {
+        const fallbackModals = Array.from(document.querySelectorAll('div, section, form'))
+            .filter(visible)
+            .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+            .filter(item => {
+                const area = item.rect.width * item.rect.height;
+                return area > 100000
+                    && area < window.innerWidth * window.innerHeight * 0.85
+                    && item.text.includes('下载报表')
+                    && item.text.includes('日期范围')
+                    && item.text.includes('文件名称');
+            })
+            .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
+        modal = fallbackModals[0]?.el;
+    }
+    if (!modal) return {opened: false, reason: 'download_dialog_not_found'};
+
+    const directRows = Array.from(modal.querySelectorAll('.dialog-body .form-item, .form-item'))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .filter(item => item.text.includes('日期范围'));
+    for (const row of directRows) {
+        const target = row.el.querySelector('.mxgc-calendar-rangepicker, .mx-trigger, [class*="rangepicker"], [class*="picker"], [role="combobox"]');
+        if (target && visible(target)) {
+            const rect = target.getBoundingClientRect();
+            const x = rect.left + rect.width / 2;
+            const y = rect.top + rect.height / 2;
+            (document.elementFromPoint(x, y) || target).click();
+            return {opened: true, via: 'dialog-form-item', text: norm(target.textContent || target.value), rect: {
+                x: Math.round(rect.x), y: Math.round(rect.y),
+                width: Math.round(rect.width), height: Math.round(rect.height)
+            }};
+        }
+        const x = Math.min(row.rect.right - 80, row.rect.left + 230);
+        const y = row.rect.top + row.rect.height / 2;
+        document.elementFromPoint(x, y)?.click();
+        return {opened: true, via: 'dialog-form-item-coordinate', text: row.text, rect: {
+            x: Math.round(x), y: Math.round(y), width: 0, height: 0
+        }};
+    }
+
+    const rows = Array.from(modal.querySelectorAll('label, div, span'))
+        .filter(visible)
+        .filter(el => norm(el.textContent) === '日期范围')
+        .map(label => {
+            let row = label.parentElement;
+            for (let i = 0; row && i < 4; i += 1, row = row.parentElement) {
+                const text = norm(row.textContent);
+                if (text.includes('日期范围') && (text.includes('过去7天') || text.includes('昨日') || text.includes('昨天') || text.includes('-'))) {
+                    return row;
+                }
+            }
+            return null;
+        })
+        .filter(Boolean);
+
+    const scopes = rows.length ? rows : [modal];
+    for (const scope of scopes) {
+        const controls = Array.from(scope.querySelectorAll('.mx-trigger, [class*="rangepicker"], [class*="picker"], input, [role="combobox"]'))
+            .filter(visible)
+            .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent || el.value)}))
+            .filter(item => !item.text.includes('日期范围'))
+            .filter(item => item.text.includes('过去7天') || item.text.includes('昨日') || item.text.includes('昨天') || item.text.includes('-'))
+            .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
+        const target = controls[0];
+        if (target) {
+            target.el.click();
+            return {opened: true, via: 'dialog-date-control', text: target.text, rect: {
+                x: Math.round(target.rect.x), y: Math.round(target.rect.y),
+                width: Math.round(target.rect.width), height: Math.round(target.rect.height)
+            }};
+        }
+    }
+    const textTargets = Array.from(modal.querySelectorAll('button, div, span, input, [role="combobox"]'))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent || el.value)}))
+        .filter(item => item.text.includes('过去7天') || item.text.includes('昨日') || item.text.includes('昨天'))
+        .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
+    const textTarget = textTargets[0];
+    if (textTarget) {
+        textTarget.el.click();
+        return {opened: true, via: 'dialog-text-target', text: textTarget.text, rect: {
+            x: Math.round(textTarget.rect.x), y: Math.round(textTarget.rect.y),
+            width: Math.round(textTarget.rect.width), height: Math.round(textTarget.rect.height)
+        }};
+    }
+    const modalRect = modal.getBoundingClientRect();
+    const label = Array.from(modal.querySelectorAll('label, div, span'))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .find(item => item.text === '日期范围');
+    if (label) {
+        const x = Math.min(modalRect.right - 60, label.rect.right + 185);
+        const y = label.rect.top + label.rect.height / 2;
+        document.elementFromPoint(x, y)?.click();
+        return {opened: true, via: 'label-coordinate', text: label.text, rect: {
+            x: Math.round(x), y: Math.round(y), width: 0, height: 0
+        }};
+    }
+    return {opened: false, reason: 'date_control_not_found'};
+}
+"""
+    )
+    log(f"日期下拉打开结果: {opened}")
+    if not opened or not opened.get("opened"):
+        return False
+    await asyncio.sleep(1)
+
+    option_result = await page.evaluate(
+        """
+(labels) => {
+    const visible = el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const norm = text => (text || '').replace(/\\s+/g, '');
+    const targets = labels.map(norm);
+    const popups = Array.from(document.querySelectorAll('.mx-output-bottom.mx-output-open, .mx-output, [role="listbox"], [class*="dropdown"]'))
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .filter(item => visible(item.el) && item.text.includes('快捷日期'))
+        .sort((a, b) => a.rect.y - b.rect.y);
+    const popup = popups[0]?.el;
+    if (!popup) return {selected: false, reason: 'date_popup_not_found'};
+
+    const candidates = Array.from(popup.querySelectorAll('button, [role="option"], li, div, span'))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .filter(item => targets.includes(item.text))
+        .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
+    const target = candidates[0];
+    if (!target) return {selected: false, reason: 'yesterday_option_not_found'};
+    target.el.click();
+    return {selected: true, text: target.text, rect: {
+        x: Math.round(target.rect.x), y: Math.round(target.rect.y),
+        width: Math.round(target.rect.width), height: Math.round(target.rect.height)
+    }};
+}
+""",
+        ["昨天", "昨日", "过去1天", "过去 1 天"],
+    )
+    log(f"昨天选项选择结果: {option_result}")
+    if not option_result or not option_result.get("selected"):
+        return False
+    await asyncio.sleep(1)
+
+    confirm_result = await page.evaluate(
+        """
+() => {
+    const visible = el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const norm = text => (text || '').replace(/\\s+/g, '');
+    const popups = Array.from(document.querySelectorAll('.mx-output-bottom.mx-output-open, .mx-output, [role="listbox"], [class*="dropdown"]'))
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .filter(item => visible(item.el) && item.text.includes('快捷日期'))
+        .sort((a, b) => a.rect.y - b.rect.y);
+    const popup = popups[0]?.el;
+    if (!popup) return {clicked: true, reason: 'date_popup_already_closed'};
+    const candidates = Array.from(popup.querySelectorAll('button, span, div'))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .filter(item => item.text === '确定')
+        .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
+    const target = candidates[0];
+    if (!target) return {clicked: false, reason: 'date_confirm_not_found'};
+    target.el.click();
+    return {clicked: true, text: target.text, rect: {
+        x: Math.round(target.rect.x), y: Math.round(target.rect.y),
+        width: Math.round(target.rect.width), height: Math.round(target.rect.height)
+    }};
+}
+"""
+    )
+    log(f"日期弹层确定结果: {confirm_result}")
+    if not confirm_result or not confirm_result.get("clicked"):
+        return False
+    await asyncio.sleep(1)
+
+    dialog_text = await page.evaluate(
+        """
+() => {
+    const visible = el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const norm = text => (text || '').replace(/\\s+/g, ' ').trim();
+    const modals = Array.from(document.querySelectorAll('.ant-modal, [role="dialog"], [class*="dialog"], div, section, form'))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .filter(item => {
+            const area = item.rect.width * item.rect.height;
+            return area > 100000
+                && area < window.innerWidth * window.innerHeight * 0.9
+                && item.text.includes('下载报表')
+                && item.text.includes('日期范围')
+                && item.text.includes('文件名称');
+        })
+        .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
+    return modals[0]?.text || '';
+}
+"""
+    )
+    if not dialog_text:
+        log("[ERROR] 未能读取下载弹窗日期范围，停止下载")
+        return False
+    if "过去 7 天" in dialog_text or "过去7天" in dialog_text:
+        log("[ERROR] 日期范围仍显示过去7天，停止下载")
+        return False
+    if report_date not in dialog_text and "昨日" not in dialog_text and "昨天" not in dialog_text:
+        log(f"[ERROR] 日期范围没有确认到昨天，弹窗文本: {dialog_text[:200]}")
+        return False
+    return True
 
 
 def big_table_has_date(report_date: str) -> bool:
@@ -347,48 +698,51 @@ async def do_download():
             # 万相台常把下载弹窗默认为最近多日；写入大表前会强制过滤为 report_date。
             log(f"\n[步骤2] 下载日期以页面默认范围创建，写入大表时只保留 {report_date}")
 
-            # ========== 步骤3: 切换报表维度为"按计划/场景" ==========
-            log(f"\n[步骤3] 切换报表维度确保含场景/计划明细列...")
-            for dim_name in ["按计划", "按场景", "计划", "场景"]:
-                try:
-                    dim_btn = page.get_by_text(dim_name, exact=False).first
-                    if await dim_btn.is_visible(timeout=2000):
-                        await dim_btn.click(timeout=3000)
-                        log(f"已选中维度 [{dim_name}]，导出应包含 场景ID/场景名字/计划ID/计划名字")
-                        await asyncio.sleep(2)
-                        break
-                except Exception:
-                    continue
-            else:
-                log("[WARN] 未找到维度选择项，导出可能缺场景/计划列，请检查")
+            # ========== 步骤3: 保持商品明细维度 ==========
+            # 商品报表的默认商品明细会包含主体ID，同时保留场景/计划字段。
+            # 不要切到“计划”维度；计划报表缺少主体ID，不能进入大表。
+            log("\n[步骤3] 保持商品报表/商品明细维度，避免导出缺少主体ID的计划报表")
 
             # ========== 步骤4: 点击"下载报表"按钮 ==========
             log(f"\n[步骤4] 点击'下载报表'按钮...")
-            download_btn = page.get_by_text(BTN_DOWNLOAD_REPORT, exact=True).first
-            try:
-                await download_btn.scroll_into_view_if_needed(timeout=5000)
-                log(f"按钮位置: {await download_btn.bounding_box()}")
-                await download_btn.click(timeout=5000)
-                log("已点击'下载报表'")
-            except Exception as e:
-                log(f"点击失败: {e}")
-                # 备用方案：通过 role 查找
-                try:
-                    await page.get_by_role("button", name=BTN_DOWNLOAD_REPORT).first.click(timeout=5000)
-                    log("已点击(通过 role)")
-                except Exception as e2:
-                    log(f"[ERROR] 无法找到'下载报表'按钮: {e2}")
-                    await page.screenshot(path=str(SCREENSHOT_DIR / "no_download_btn.png"))
-                    await browser.close()
-                    return False
+            if not await click_download_report_button(page):
+                await browser.close()
+                return False
 
             await asyncio.sleep(5)
             await page.screenshot(path=str(SCREENSHOT_DIR / "02_dialog.png"))
             target_task_name = await get_dialog_task_name(page)
             if target_task_name:
                 log(f"目标任务名: {target_task_name}")
+                if not target_task_name.startswith(EXPECTED_TASK_PREFIX):
+                    log(f"当前弹窗将导出 {target_task_name}，不是商品报表，准备切回商品维度后重试")
+                    await page.screenshot(path=str(SCREENSHOT_DIR / "wrong_report_type.png"))
+                    await close_download_dialog(page)
+                    if not await ensure_product_detail_dimension(page):
+                        log("[ERROR] 无法切回商品维度，已停止")
+                        await page.screenshot(path=str(SCREENSHOT_DIR / "cannot_select_product_dimension.png"))
+                        await browser.close()
+                        return False
+                    if not await click_download_report_button(page):
+                        await browser.close()
+                        return False
+                    await asyncio.sleep(5)
+                    await page.screenshot(path=str(SCREENSHOT_DIR / "02_dialog_product.png"))
+                    target_task_name = await get_dialog_task_name(page)
+                    if not target_task_name or not target_task_name.startswith(EXPECTED_TASK_PREFIX):
+                        log(f"[ERROR] 重试后仍不是商品报表: {target_task_name}")
+                        await page.screenshot(path=str(SCREENSHOT_DIR / "still_wrong_report_type.png"))
+                        await browser.close()
+                        return False
+                    log(f"目标任务名: {target_task_name}")
             else:
                 log("[WARN] 未能从弹窗读取精确任务名，将使用当天报表前缀兜底")
+
+            if not await set_dialog_date_to_yesterday(page, report_date):
+                log("[ERROR] 未能把下载日期设置为昨天，已停止")
+                await page.screenshot(path=str(SCREENSHOT_DIR / "date_not_yesterday.png"))
+                await browser.close()
+                return False
 
             # ========== 步骤5: 在弹窗中点击"确定" ==========
             log(f"\n[步骤5] 在弹窗中点击'确定'...")
@@ -427,7 +781,7 @@ async def do_download():
             # 注意：任务名中的日期是创建日期（今天），不是报表日期。
             # 优先使用弹窗里的精确任务名，避免误下载列表里的旧任务。
             today_str = datetime.now().strftime("%Y%m%d")
-            fallback_prefixes = [f"计划报表_{today_str}", f"商品报表_{today_str}", f"人群报表_{today_str}"]
+            fallback_prefixes = [f"{EXPECTED_TASK_PREFIX}{today_str}"]
             log(f"兜底任务名前缀: {fallback_prefixes}")
 
             # ========== 步骤5: 跳转到下载任务管理页 ==========
@@ -790,11 +1144,18 @@ def append_to_big_table(csv_path, report_date_str):
 
     missing_detail_cols = [col for col in REQUIRED_DETAIL_COLUMNS if col not in df_new.columns]
     if missing_detail_cols:
-        log(f"[ERROR] CSV 缺少关键明细字段: {', '.join(missing_detail_cols)}，跳过大表追加")
+        log(f"[ERROR] CSV 缺少关键字段: {', '.join(missing_detail_cols)}，跳过大表追加")
         return False
-    if df_new["场景名字"].isna().all() or (df_new["场景名字"].astype(str).str.strip() == "").all():
-        log("[ERROR] 场景名字列全部为空，报表维度不正确，跳过大表追加")
-        return False
+    missing_optional_cols = [col for col in OPTIONAL_DETAIL_DEFAULTS if col not in df_new.columns]
+    if missing_optional_cols:
+        log(f"[WARN] 商品报表缺少可选场景/计划字段，已补默认值: {', '.join(missing_optional_cols)}")
+    for col, default in OPTIONAL_DETAIL_DEFAULTS.items():
+        if col not in df_new.columns:
+            df_new[col] = default
+        else:
+            df_new[col] = df_new[col].fillna(default)
+            if default:
+                df_new.loc[df_new[col].astype(str).str.strip() == "", col] = default
 
     df_new["日期"] = pd.to_datetime(df_new["日期"], errors="coerce").dt.strftime("%Y-%m-%d")
     csv_dates = sorted(d for d in df_new["日期"].dropna().unique().tolist())
