@@ -23,6 +23,7 @@
 用法：
   python wanxiangtai_download.py login      # 首次扫码登录
   python wanxiangtai_download.py download   # 下载前一天商品报表
+  WORKBUDDY_REPORT_DATE=2026-07-09 python wanxiangtai_download.py download
   python wanxiangtai_download.py            # 默认执行 download
 """
 
@@ -112,7 +113,19 @@ def acquire_lock(lock_path: Path):
 
 
 def get_report_date():
-    """获取报表日期（昨天）"""
+    """获取报表日期（默认昨天，可用 WORKBUDDY_REPORT_DATE 指定）"""
+    override = os.environ.get("WORKBUDDY_REPORT_DATE", "").strip()
+    if override:
+        try:
+            return datetime.strptime(override, "%Y-%m-%d").strftime("%Y-%m-%d")
+        except ValueError:
+            log(f"[ERROR] WORKBUDDY_REPORT_DATE 格式错误，应为 YYYY-MM-DD: {override}")
+            raise
+    return (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+
+def get_yesterday_date():
+    """Return yesterday in YYYY-MM-DD format."""
     return (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
 
@@ -350,9 +363,8 @@ async def ensure_product_detail_dimensions_all(page) -> bool:
     return bool(verify_result and verify_result.get("ok"))
 
 
-async def set_dialog_date_to_yesterday(page, report_date: str) -> bool:
-    """Set the download dialog date range to yesterday."""
-    log(f"设置下载弹窗日期范围为昨天: {report_date}")
+async def open_dialog_date_picker(page):
+    """Open the date range picker in the download dialog."""
     opened = await page.evaluate(
         """
 () => {
@@ -477,8 +489,11 @@ async def set_dialog_date_to_yesterday(page, report_date: str) -> bool:
 """
     )
     log(f"日期下拉打开结果: {opened}")
-    if not opened or not opened.get("opened"):
-        return False
+    return opened
+
+
+async def select_dialog_yesterday_quick_date(page) -> bool:
+    """Select the yesterday quick-date option in the open date picker."""
     await asyncio.sleep(1)
 
     option_result = await page.evaluate(
@@ -553,6 +568,164 @@ async def set_dialog_date_to_yesterday(page, report_date: str) -> bool:
     if not confirm_result or not confirm_result.get("clicked"):
         return False
     await asyncio.sleep(1)
+    return True
+
+
+async def select_dialog_specific_date(page, report_date: str) -> bool:
+    """Select a specific single-day range in the open date picker."""
+    await asyncio.sleep(1)
+
+    start_result = await page.evaluate(
+        """
+(targetDate) => {
+    const visible = el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const popups = Array.from(document.querySelectorAll('.mx-output-bottom.mx-output-open, .mx-output'))
+        .filter(visible)
+        .filter(el => (el.textContent || '').includes('快捷日期'));
+    const popup = popups[0];
+    if (!popup) return {clicked: false, reason: 'date_popup_not_found'};
+    const fields = Array.from(popup.querySelectorAll('.mxgc-calendar-datepicker')).filter(visible);
+    if (fields.length < 2) return {clicked: false, reason: 'date_fields_not_found', count: fields.length};
+    const field = fields[0];
+    const rect = field.getBoundingClientRect();
+    (document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) || field).click();
+    return {clicked: true, targetDate, current: field.value || field.getAttribute('value') || ''};
+}
+""",
+        report_date,
+    )
+    log(f"开始日期输入框选择结果: {start_result}")
+    if not start_result or not start_result.get("clicked"):
+        return False
+    await asyncio.sleep(0.5)
+
+    date1_result = await page.evaluate(
+        """
+(targetDate) => {
+    const visible = el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const candidates = Array.from(document.querySelectorAll(`[title="${targetDate}"]`))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: el.textContent || '', title: el.getAttribute('title')}))
+        .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
+    const target = candidates[0];
+    if (!target) return {clicked: false, reason: 'start_date_cell_not_found'};
+    (document.elementFromPoint(target.rect.left + target.rect.width / 2, target.rect.top + target.rect.height / 2) || target.el).click();
+    return {clicked: true, text: target.text.trim(), title: target.title};
+}
+""",
+        report_date,
+    )
+    log(f"开始日期 {report_date} 选择结果: {date1_result}")
+    if not date1_result or not date1_result.get("clicked"):
+        return False
+    await asyncio.sleep(1)
+
+    end_result = await page.evaluate(
+        """
+(targetDate) => {
+    const visible = el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const popups = Array.from(document.querySelectorAll('.mx-output-bottom.mx-output-open, .mx-output'))
+        .filter(visible)
+        .filter(el => (el.textContent || '').includes('快捷日期'));
+    const popup = popups[0];
+    if (!popup) return {clicked: false, reason: 'date_popup_not_found_after_start'};
+    const fields = Array.from(popup.querySelectorAll('.mxgc-calendar-datepicker')).filter(visible);
+    if (fields.length < 2) return {clicked: false, reason: 'date_fields_not_found_after_start', count: fields.length};
+    const field = fields[1];
+    const rect = field.getBoundingClientRect();
+    (document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) || field).click();
+    return {clicked: true, targetDate, current: field.value || field.getAttribute('value') || ''};
+}
+""",
+        report_date,
+    )
+    log(f"结束日期输入框选择结果: {end_result}")
+    if not end_result or not end_result.get("clicked"):
+        return False
+    await asyncio.sleep(0.5)
+
+    date2_result = await page.evaluate(
+        """
+(targetDate) => {
+    const visible = el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const candidates = Array.from(document.querySelectorAll(`[title="${targetDate}"]`))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: el.textContent || '', title: el.getAttribute('title')}))
+        .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
+    const target = candidates[0];
+    if (!target) return {clicked: false, reason: 'end_date_cell_not_found'};
+    (document.elementFromPoint(target.rect.left + target.rect.width / 2, target.rect.top + target.rect.height / 2) || target.el).click();
+    return {clicked: true, text: target.text.trim(), title: target.title};
+}
+""",
+        report_date,
+    )
+    log(f"结束日期 {report_date} 选择结果: {date2_result}")
+    if not date2_result or not date2_result.get("clicked"):
+        return False
+    await asyncio.sleep(1)
+
+    confirm_result = await page.evaluate(
+        """
+() => {
+    const visible = el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const norm = text => (text || '').replace(/\\s+/g, '');
+    const popup = Array.from(document.querySelectorAll('.mx-output-bottom.mx-output-open, .mx-output'))
+        .filter(visible)
+        .find(el => (el.textContent || '').includes('快捷日期'));
+    if (!popup) return {clicked: false, reason: 'date_popup_not_found_before_confirm'};
+    const candidates = Array.from(popup.querySelectorAll('button, span, div'))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .filter(item => item.text === '确定')
+        .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
+    const target = candidates[0];
+    if (!target) return {clicked: false, reason: 'date_confirm_not_found'};
+    target.el.click();
+    return {clicked: true, text: target.text};
+}
+"""
+    )
+    log(f"指定日期弹层确定结果: {confirm_result}")
+    if not confirm_result or not confirm_result.get("clicked"):
+        return False
+    await asyncio.sleep(1)
+    return True
+
+
+async def set_dialog_date_to_report_date(page, report_date: str) -> bool:
+    """Set the download dialog date range to the requested report date."""
+    log(f"设置下载弹窗日期范围为: {report_date}")
+    opened = await open_dialog_date_picker(page)
+    if not opened or not opened.get("opened"):
+        return False
+
+    if report_date == get_yesterday_date():
+        if not await select_dialog_yesterday_quick_date(page):
+            return False
+    else:
+        if not await select_dialog_specific_date(page, report_date):
+            return False
 
     dialog_text = await page.evaluate(
         """
@@ -585,8 +758,11 @@ async def set_dialog_date_to_yesterday(page, report_date: str) -> bool:
     if "过去 7 天" in dialog_text or "过去7天" in dialog_text:
         log("[ERROR] 日期范围仍显示过去7天，停止下载")
         return False
-    if report_date not in dialog_text and "昨日" not in dialog_text and "昨天" not in dialog_text:
-        log(f"[ERROR] 日期范围没有确认到昨天，弹窗文本: {dialog_text[:200]}")
+    if report_date not in dialog_text and not (
+        report_date == get_yesterday_date()
+        and ("昨日" in dialog_text or "昨天" in dialog_text)
+    ):
+        log(f"[ERROR] 日期范围没有确认到目标日期 {report_date}，弹窗文本: {dialog_text[:200]}")
         return False
     return True
 
@@ -918,8 +1094,8 @@ async def do_download():
             else:
                 log("[WARN] 未能从弹窗读取精确任务名，将使用当天报表前缀兜底")
 
-            if not await set_dialog_date_to_yesterday(page, report_date):
-                log("[ERROR] 未能把下载日期设置为昨天，已停止")
+            if not await set_dialog_date_to_report_date(page, report_date):
+                log(f"[ERROR] 未能把下载日期设置为 {report_date}，已停止")
                 await page.screenshot(path=str(SCREENSHOT_DIR / "date_not_yesterday.png"))
                 await browser.close()
                 return False
