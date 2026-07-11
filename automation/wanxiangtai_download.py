@@ -12,7 +12,7 @@
 
 完整下载流程（异步任务模式）：
   1. 访问商品报表页（item_promotion）
-  2. 保持商品报表/商品明细维度
+  2. 在商品数据明细里把维度设置为全选
   3. 点击"下载报表"按钮并记录弹窗里的精确任务名
   4. 点击"确定"创建下载任务
   5. 跳转到下载任务管理页
@@ -202,10 +202,128 @@ async def close_download_dialog(page) -> None:
         pass
 
 
-async def ensure_product_detail_dimension(page) -> bool:
-    """Select product detail dimension so exports include subjectId."""
-    log("尝试把明细维度切回商品，避免下载计划报表")
+async def ensure_product_detail_dimensions_all(page) -> bool:
+    """Select all detail dimensions in the product detail grid."""
+    log("设置商品数据明细维度为全选（商品/计划/时间）")
     opened = await page.evaluate(
+        """
+() => {
+    const visible = el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const norm = text => (text || '').replace(/\\s+/g, '');
+    const grids = Array.from(document.querySelectorAll('.mxgc-grid, .grid, div'))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .filter(item => item.text.includes('商品数据明细') && item.text.includes('维度'));
+    const grid = grids.sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height))[0]?.el || document.body;
+    const candidates = Array.from(grid.querySelectorAll('button, div, span, [role="button"], [role="combobox"]'))
+        .filter(visible)
+        .filter(el => {
+            const text = norm(el.textContent);
+            return text.includes('维度') && (text.includes('商品') || text.includes('计划') || text.includes('时间'));
+        })
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .sort((a, b) => {
+            const areaA = a.rect.width * a.rect.height;
+            const areaB = b.rect.width * b.rect.height;
+            return areaA - areaB;
+        });
+    const target = candidates[0];
+    if (!target) return {opened: false, reason: 'dimension_trigger_not_found'};
+    target.el.scrollIntoView({block: 'center', inline: 'nearest'});
+    target.el.click();
+    return {opened: true, text: target.text, rect: {
+        x: Math.round(target.rect.x), y: Math.round(target.rect.y),
+        width: Math.round(target.rect.width), height: Math.round(target.rect.height)
+    }};
+}
+"""
+    )
+    log(f"维度下拉打开结果: {opened}")
+    if not opened or not opened.get("opened"):
+        return False
+    await asyncio.sleep(1)
+
+    select_result = await page.evaluate(
+        """
+() => {
+    const visible = el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const norm = text => (text || '').replace(/\\s+/g, '');
+    const popups = Array.from(document.querySelectorAll('.mx-output-bottom.mx-output-open, .mx-output'))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .filter(item => item.text.includes('全选') && item.text.includes('商品') && item.text.includes('计划') && item.text.includes('时间'))
+        .sort((a, b) => a.rect.y - b.rect.y);
+    const popup = popups[0]?.el;
+    if (!popup) return {selected: false, reason: 'dimension_popup_not_found'};
+
+    const checkedValues = () => Array.from(popup.querySelectorAll('input'))
+        .filter(input => input.checked)
+        .map(input => input.value || norm(input.closest('label')?.textContent));
+    const before = checkedValues();
+    const allInput = Array.from(popup.querySelectorAll('input'))
+        .find(input => (input.value || '').includes('_all'));
+    if (allInput && !allInput.checked) {
+        const rect = allInput.getBoundingClientRect();
+        (document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) || allInput).click();
+    } else if (!allInput) {
+        for (const input of Array.from(popup.querySelectorAll('input'))) {
+            if (!input.checked && !input.disabled) {
+                const rect = input.getBoundingClientRect();
+                (document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) || input).click();
+            }
+        }
+    }
+    return {selected: true, before, after: checkedValues(), text: norm(popup.textContent)};
+}
+"""
+    )
+    log(f"维度全选结果: {select_result}")
+    if not select_result or not select_result.get("selected"):
+        return False
+    await asyncio.sleep(1)
+
+    confirm_result = await page.evaluate(
+        """
+() => {
+    const visible = el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const norm = text => (text || '').replace(/\\s+/g, '');
+    const popups = Array.from(document.querySelectorAll('.mx-output-bottom.mx-output-open, .mx-output'))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .filter(item => item.text.includes('全选') && item.text.includes('商品') && item.text.includes('计划') && item.text.includes('时间'))
+        .sort((a, b) => a.rect.y - b.rect.y);
+    const popup = popups[0]?.el;
+    if (!popup) return {clicked: true, reason: 'dimension_popup_already_closed'};
+    const candidates = Array.from(popup.querySelectorAll('button, span, div'))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .filter(item => item.text === '确定')
+        .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
+    const target = candidates[0];
+    if (!target) return {clicked: false, reason: 'dimension_confirm_not_found'};
+    target.el.click();
+    return {clicked: true, text: target.text};
+}
+"""
+    )
+    log(f"维度弹层确定结果: {confirm_result}")
+    if not confirm_result or not confirm_result.get("clicked"):
+        return False
+    await asyncio.sleep(5)
+
+    verify_result = await page.evaluate(
         """
 () => {
     const visible = el => {
@@ -216,50 +334,20 @@ async def ensure_product_detail_dimension(page) -> bool:
     const norm = text => (text || '').replace(/\\s+/g, '');
     const candidates = Array.from(document.querySelectorAll('button, div, span, [role="button"], [role="combobox"]'))
         .filter(visible)
-        .filter(el => {
-            const text = norm(el.textContent);
-            return text.includes('维度') && text.includes('计划');
-        })
-        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
-        .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
-    const target = candidates[0];
-    if (!target) return {opened: false, reason: 'dimension_trigger_not_found'};
-    target.el.click();
-    return {opened: true, text: target.text};
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent), value: el.value}))
+        .filter(item => item.text.includes('维度') && item.text.includes('商品'));
+    const target = candidates.sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height))[0];
+    if (!target) return {ok: false, reason: 'dimension_trigger_not_found_after_confirm'};
+    return {
+        ok: target.text.includes('计划') && target.text.includes('时间'),
+        text: target.text,
+        value: target.value
+    };
 }
 """
     )
-    log(f"维度下拉打开结果: {opened}")
-    if not opened or not opened.get("opened"):
-        return False
-    await asyncio.sleep(1)
-
-    option_result = await page.evaluate(
-        """
-(labels) => {
-    const visible = el => {
-        const rect = el.getBoundingClientRect();
-        const style = window.getComputedStyle(el);
-        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
-    };
-    const norm = text => (text || '').replace(/\\s+/g, '');
-    const targets = labels.map(norm);
-    const candidates = Array.from(document.querySelectorAll('[role="option"], li, div, span'))
-        .filter(visible)
-        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
-        .filter(item => targets.includes(item.text))
-        .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
-    const target = candidates[0];
-    if (!target) return {selected: false, reason: 'product_option_not_found'};
-    target.el.click();
-    return {selected: true, text: target.text};
-}
-""",
-        ["商品", "商品主体", "主体", "按商品"],
-    )
-    log(f"商品维度选择结果: {option_result}")
-    await asyncio.sleep(3)
-    return bool(option_result and option_result.get("selected"))
+    log(f"维度设置校验: {verify_result}")
+    return bool(verify_result and verify_result.get("ok"))
 
 
 async def set_dialog_date_to_yesterday(page, report_date: str) -> bool:
@@ -503,6 +591,94 @@ async def set_dialog_date_to_yesterday(page, report_date: str) -> bool:
     return True
 
 
+async def ensure_dialog_time_granularity_day(page) -> bool:
+    """Ensure the download dialog uses day-level time granularity."""
+    log("确认下载弹窗时间粒度为分天")
+    result = await page.evaluate(
+        """
+() => {
+    const visible = el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const norm = text => (text || '').replace(/\\s+/g, '');
+    const modals = Array.from(document.querySelectorAll('.ant-modal, [role="dialog"], [class*="dialog"], div, section, form'))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .filter(item => {
+            const area = item.rect.width * item.rect.height;
+            return area > 100000
+                && area < window.innerWidth * window.innerHeight * 0.9
+                && item.text.includes('下载报表')
+                && item.text.includes('时间粒度')
+                && item.text.includes('文件名称');
+        })
+        .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
+    const modal = modals[0]?.el;
+    if (!modal) return {ok: false, reason: 'download_dialog_not_found'};
+    const modalText = norm(modal.textContent);
+    if (modalText.includes('时间粒度') && modalText.includes('分天')) {
+        return {ok: true, text: modalText};
+    }
+
+    const rows = Array.from(modal.querySelectorAll('.dialog-body .form-item, .form-item'))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .filter(item => item.text.includes('时间粒度'))
+        .sort((a, b) => (b.rect.width * b.rect.height) - (a.rect.width * a.rect.height));
+    const row = rows[0];
+    if (!row) return {ok: false, reason: 'time_row_not_found'};
+    if (row.text.includes('分天')) return {ok: true, text: row.text};
+
+    const target = Array.from(row.el.querySelectorAll('.mx-trigger, [role="combobox"], button, div, span'))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .filter(item => !item.text.includes('时间粒度'))
+        .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height))[0];
+    if (!target) return {ok: false, reason: 'time_control_not_found', text: row.text};
+    target.el.click();
+    return {ok: null, opened: true, text: target.text};
+}
+"""
+    )
+    log(f"时间粒度当前状态: {result}")
+    if result and result.get("ok") is True:
+        return True
+    if not result or not result.get("opened"):
+        return False
+    await asyncio.sleep(1)
+
+    option_result = await page.evaluate(
+        """
+() => {
+    const visible = el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const norm = text => (text || '').replace(/\\s+/g, '');
+    const candidates = Array.from(document.querySelectorAll('.mx-output-bottom.mx-output-open, .mx-output, [role="listbox"], [class*="dropdown"]'))
+        .filter(visible)
+        .flatMap(popup => Array.from(popup.querySelectorAll('button, [role="option"], li, div, span')))
+        .filter(visible)
+        .map(el => ({el, rect: el.getBoundingClientRect(), text: norm(el.textContent)}))
+        .filter(item => item.text === '分天')
+        .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
+    const target = candidates[0];
+    if (!target) return {selected: false, reason: 'day_option_not_found'};
+    target.el.click();
+    return {selected: true, text: target.text};
+}
+"""
+    )
+    log(f"时间粒度分天选择结果: {option_result}")
+    if not option_result or not option_result.get("selected"):
+        return False
+    await asyncio.sleep(1)
+    return True
+
+
 def big_table_has_date(report_date: str) -> bool:
     """Return whether the accumulated workbook already contains report_date."""
     try:
@@ -698,10 +874,14 @@ async def do_download():
             # 万相台常把下载弹窗默认为最近多日；写入大表前会强制过滤为 report_date。
             log(f"\n[步骤2] 下载日期以页面默认范围创建，写入大表时只保留 {report_date}")
 
-            # ========== 步骤3: 保持商品明细维度 ==========
-            # 商品报表的默认商品明细会包含主体ID，同时保留场景/计划字段。
-            # 不要切到“计划”维度；计划报表缺少主体ID，不能进入大表。
-            log("\n[步骤3] 保持商品报表/商品明细维度，避免导出缺少主体ID的计划报表")
+            # ========== 步骤3: 商品数据明细维度全选 ==========
+            # 全选商品/计划/时间，导出行会同时包含主体、计划和日期维度。
+            log("\n[步骤3] 商品数据明细维度全选（商品/计划/时间）")
+            if not await ensure_product_detail_dimensions_all(page):
+                log("[ERROR] 无法把商品数据明细维度设置为全选，已停止")
+                await page.screenshot(path=str(SCREENSHOT_DIR / "cannot_select_all_dimensions.png"))
+                await browser.close()
+                return False
 
             # ========== 步骤4: 点击"下载报表"按钮 ==========
             log(f"\n[步骤4] 点击'下载报表'按钮...")
@@ -718,8 +898,8 @@ async def do_download():
                     log(f"当前弹窗将导出 {target_task_name}，不是商品报表，准备切回商品维度后重试")
                     await page.screenshot(path=str(SCREENSHOT_DIR / "wrong_report_type.png"))
                     await close_download_dialog(page)
-                    if not await ensure_product_detail_dimension(page):
-                        log("[ERROR] 无法切回商品维度，已停止")
+                    if not await ensure_product_detail_dimensions_all(page):
+                        log("[ERROR] 无法把商品数据明细维度设置为全选，已停止")
                         await page.screenshot(path=str(SCREENSHOT_DIR / "cannot_select_product_dimension.png"))
                         await browser.close()
                         return False
@@ -741,6 +921,11 @@ async def do_download():
             if not await set_dialog_date_to_yesterday(page, report_date):
                 log("[ERROR] 未能把下载日期设置为昨天，已停止")
                 await page.screenshot(path=str(SCREENSHOT_DIR / "date_not_yesterday.png"))
+                await browser.close()
+                return False
+            if not await ensure_dialog_time_granularity_day(page):
+                log("[ERROR] 未能把下载时间粒度设置为分天，已停止")
+                await page.screenshot(path=str(SCREENSHOT_DIR / "time_granularity_not_day.png"))
                 await browser.close()
                 return False
 
