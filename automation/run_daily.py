@@ -27,6 +27,8 @@ RUN_HOUR = 7
 RUN_MINUTE = 30
 DOWNLOAD_TIMEOUT = int(os.environ.get("WORKBUDDY_DOWNLOAD_TIMEOUT", "1200"))
 DEPLOY_TIMEOUT = int(os.environ.get("WORKBUDDY_DEPLOY_TIMEOUT", "600"))
+DOWNLOAD_ATTEMPTS = int(os.environ.get("WORKBUDDY_DOWNLOAD_ATTEMPTS", "6"))
+DOWNLOAD_RETRY_DELAY = int(os.environ.get("WORKBUDDY_DOWNLOAD_RETRY_DELAY", "1800"))
 
 
 def log(msg):
@@ -62,13 +64,17 @@ def acquire_lock():
         return True
 
 
-def run_download():
+def run_download(attempt: int = 1):
     """运行下载脚本"""
-    log("[步骤1] 开始下载并更新大表")
+    log(f"[步骤1] 开始下载并更新大表（第 {attempt}/{DOWNLOAD_ATTEMPTS} 次）")
     try:
+        env = os.environ.copy()
+        if attempt > 1:
+            env["FORCE_DOWNLOAD"] = "1"
         result = subprocess.run(
             [PYTHON, str(DOWNLOAD_SCRIPT), "download"],
             cwd=SCRIPT_DIR,
+            env=env,
             capture_output=True,
             text=True,
             timeout=DOWNLOAD_TIMEOUT,
@@ -138,9 +144,17 @@ def seconds_until_next_run():
 
 
 def run_once() -> bool:
-    download_ok = run_download()
+    download_ok = False
+    for attempt in range(1, max(1, DOWNLOAD_ATTEMPTS) + 1):
+        download_ok = run_download(attempt)
+        if download_ok:
+            break
+        if attempt < DOWNLOAD_ATTEMPTS:
+            log(f"下载或写入大表失败，{DOWNLOAD_RETRY_DELAY} 秒后重试。")
+            time.sleep(max(0, DOWNLOAD_RETRY_DELAY))
+
     if not download_ok:
-        log("下载或写入大表失败，跳过部署。")
+        log("下载或写入大表失败，已达到最大重试次数，跳过部署。")
         return False
 
     deploy_ok = run_deploy()
