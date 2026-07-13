@@ -74,6 +74,9 @@ def commit_site(message: str) -> bool:
     print("[3/3] 提交 site/ 发布产物...")
     ensure_git_repo()
     run(["git", "add", "site"])
+    dashboard_data = FRONTEND_DIR / "src" / "data" / "dashboard-data.json"
+    if dashboard_data.exists():
+        run(["git", "add", "-f", str(dashboard_data)])
 
     diff = run(["git", "diff", "--cached", "--quiet"], check=False)
     if diff.returncode == 0:
