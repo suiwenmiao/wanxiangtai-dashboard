@@ -39,10 +39,12 @@
 
 ## 本地启动
 
+Windows 和 macOS 都推荐使用同一个 Python 入口，避免 `make`、环境变量写法、换行差异在两台电脑之间互相影响。
+
 安装依赖：
 
 ```bash
-make setup
+python scripts/dev.py setup
 ```
 
 复制配置：
@@ -63,13 +65,13 @@ WORKBUDDY_ALIMAMA_STATE
 启动 Vue 前端：
 
 ```bash
-make dev
+python scripts/dev.py dev
 ```
 
 构建前端：
 
 ```bash
-make build
+python scripts/dev.py build
 ```
 
 ## 自动化流程
@@ -77,37 +79,37 @@ make build
 首次扫码登录万相台：
 
 ```bash
-make login
+python scripts/dev.py login
 ```
 
 手动下载昨日报表并更新 Excel 大表：
 
 ```bash
-make download
+python scripts/dev.py download
 ```
 
 只生成前端数据：
 
 ```bash
-make data
+python scripts/dev.py data
 ```
 
 打包发布目录：
 
 ```bash
-make package
+python scripts/dev.py package
 ```
 
 发布到 GitHub Pages：
 
 ```bash
-make deploy
+python scripts/dev.py deploy
 ```
 
 每日自动下载并发布：
 
 ```bash
-make daily
+python scripts/dev.py daily-loop
 ```
 
 ## 部署方式
@@ -129,13 +131,16 @@ GitHub 仓库设置：
 ## 常用命令
 
 ```bash
-make check      # Python 语法检查 + 前端构建
-make dev        # 生成数据并启动 Vue 开发服务器
-make build      # 生成数据并构建 Vue 到 site/
-make package    # 完整生成数据和构建 site/
-make deploy     # 构建并提交/推送 site/
-make clean      # 清理缓存
+python scripts/dev.py check       # Python 语法检查 + 前端构建
+python scripts/dev.py dev         # 生成数据并启动 Vue 开发服务器
+python scripts/dev.py build       # 生成数据并构建 Vue 到 site/
+python scripts/dev.py package     # 完整生成数据和构建 site/
+python scripts/dev.py deploy      # 构建并提交/推送 site/
+python scripts/dev.py daily-once  # 单次执行每日下载和发布
+python scripts/dev.py clean       # 清理缓存
 ```
+
+如果只在 macOS/Linux 上开发，也可以继续使用 `make`。两台电脑共同开发时，优先使用 `python scripts/dev.py ...`。
 
 ## 数据安全
 
@@ -153,3 +158,4 @@ make clean      # 清理缓存
 
 - [运维手册](docs/OPERATIONS.md)
 - [从 Demo 到正式项目的改造路径](docs/PRODUCTIONIZATION.md)
+- [Windows / macOS 双电脑开发说明](docs/CROSS_PLATFORM.md)

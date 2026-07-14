@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -16,6 +17,45 @@ from config import AUTOMATION_DIR, FRONTEND_DIR, PROJECT_DIR, SITE_DIR
 
 
 BUILD_META = SITE_DIR / "build-meta.json"
+
+
+def _print_text(text: str, *, stream=sys.stdout) -> None:
+    if not text:
+        return
+    try:
+        print(text.rstrip(), file=stream)
+    except UnicodeEncodeError:
+        target = getattr(stream, "buffer", None)
+        if target is None:
+            return
+        target.write((text.rstrip() + "\n").encode("utf-8", errors="replace"))
+        target.flush()
+
+
+def _node_bin_dir() -> str | None:
+    node = shutil.which("node") or shutil.which("node.exe")
+    if node:
+        return str(Path(node).resolve().parent)
+
+    candidate = (
+        Path.home()
+        / ".cache"
+        / "codex-runtimes"
+        / "codex-primary-runtime"
+        / "dependencies"
+        / "node"
+        / "bin"
+    )
+    if (candidate / "node.exe").exists() or (candidate / "node").exists():
+        return str(candidate)
+    return None
+
+
+def _pnpm_cmd() -> str:
+    pnpm = shutil.which("pnpm") or shutil.which("pnpm.cmd")
+    if pnpm:
+        return pnpm
+    raise SystemExit("[ERROR] pnpm was not found. Please run: python scripts/dev.py setup")
 
 
 def run(
@@ -28,11 +68,22 @@ def run(
     run_env = os.environ.copy()
     if env:
         run_env.update(env)
-    result = subprocess.run(cmd, cwd=cwd, env=run_env, text=True, capture_output=True)
+    node_dir = _node_bin_dir()
+    if node_dir:
+        run_env["PATH"] = node_dir + os.pathsep + run_env.get("PATH", "")
+    result = subprocess.run(
+        cmd,
+        cwd=cwd,
+        env=run_env,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+    )
     if result.stdout:
-        print(result.stdout.rstrip())
+        _print_text(result.stdout)
     if result.stderr:
-        print(result.stderr.rstrip(), file=sys.stderr)
+        _print_text(result.stderr, stream=sys.stderr)
     if check and result.returncode != 0:
         raise SystemExit(result.returncode)
     return result
@@ -45,10 +96,11 @@ def generate_data() -> None:
 
 def build_frontend() -> None:
     print("[2/3] 构建 Vue 前端到 site/ ...")
+    pnpm = _pnpm_cmd()
     if not (FRONTEND_DIR / "node_modules").exists():
         print("未检测到 frontend/node_modules，先执行 pnpm install...")
-        run(["pnpm", "install"], cwd=FRONTEND_DIR, env={"CI": "true"})
-    run(["pnpm", "build"], cwd=FRONTEND_DIR, env={"CI": "true"})
+        run([pnpm, "install"], cwd=FRONTEND_DIR, env={"CI": "true"})
+    run([pnpm, "build"], cwd=FRONTEND_DIR, env={"CI": "true"})
 
     index_file = SITE_DIR / "index.html"
     if not index_file.exists():

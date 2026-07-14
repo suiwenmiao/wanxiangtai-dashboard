@@ -17,6 +17,7 @@ DEFAULT_FILES = [
     "automation/deploy_static.py",
     "scripts/check_syntax.py",
     "scripts/clean_project.py",
+    "scripts/dev.py",
 ]
 
 
