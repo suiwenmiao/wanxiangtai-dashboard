@@ -289,14 +289,10 @@ const summaryLines = computed(() => {
     });
   }
 
-  // 📊 场景分布
-  const sceneAgg = {}; let sceneTotal = 0;
-  for (const s of rows) {
-    for (const sc of s.scenarios) { if (!sceneAgg[sc.scenario]) sceneAgg[sc.scenario] = 0; sceneAgg[sc.scenario] += sc.cost; sceneTotal += sc.cost; }
-  }
-  if (sceneTotal > 0) {
-    const t3 = Object.entries(sceneAgg).sort((a,b)=>b[1]-a[1]).slice(0,3);
-    lines.push(`<br>📈 推广场景分布：${t3.map(([n,c]) => `${n}占 <b>${(c/sceneTotal*100).toFixed(0)}%</b>`).join('、')}`);
+  // 📊 场景分布：与下方“渠道推广概览（按推广场景）”使用同一批日期/品类筛选后的数据。
+  const topScenes = scenarioSummary.value.slice(0, 3);
+  if (topScenes.length > 0) {
+    lines.push(`<br>📈 推广场景分布：${topScenes.map(sc => `${sc.scenario}占 <b>${sc.costPct.toFixed(1)}%</b>`).join('、')}`);
   }
 
   // 💡 Overall advice
