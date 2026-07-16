@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -16,6 +17,7 @@ from config import AUTOMATION_DIR, FRONTEND_DIR, PROJECT_DIR, SITE_DIR
 
 
 BUILD_META = SITE_DIR / "build-meta.json"
+DEPENDENCIES_DIR = Path("/Users/suiwenmiao/.cache/codex-runtimes/codex-primary-runtime/dependencies")
 
 
 def run(
@@ -43,12 +45,47 @@ def generate_data() -> None:
     run([sys.executable, str(AUTOMATION_DIR / "generate_dashboard_data.py")])
 
 
+def resolve_pnpm_command() -> list[str]:
+    configured = os.environ.get("PNPM_BIN")
+    if configured:
+        pnpm_path = Path(configured).expanduser()
+        if pnpm_path.suffix == ".mjs":
+            node = shutil.which("node") or "/opt/homebrew/bin/node"
+            return [node, str(pnpm_path)]
+        return [str(pnpm_path)]
+
+    found = shutil.which("pnpm")
+    if found:
+        return [found]
+
+    fallback_bins = [
+        DEPENDENCIES_DIR / "bin" / "fallback" / "pnpm",
+        DEPENDENCIES_DIR / "bin" / "pnpm",
+    ]
+    for pnpm_path in fallback_bins:
+        if pnpm_path.exists():
+            return [str(pnpm_path)]
+
+    pnpm_mjs = DEPENDENCIES_DIR / "node" / "node_modules" / "pnpm" / "bin" / "pnpm.mjs"
+    node_candidates = [
+        shutil.which("node"),
+        "/opt/homebrew/bin/node",
+        str(DEPENDENCIES_DIR / "node" / "bin" / "node"),
+    ]
+    for node in node_candidates:
+        if node and Path(node).exists() and pnpm_mjs.exists():
+            return [node, str(pnpm_mjs)]
+
+    raise SystemExit("[ERROR] 未找到 pnpm。请安装 pnpm，或设置 PNPM_BIN 指向 pnpm 可执行文件。")
+
+
 def build_frontend() -> None:
     print("[2/3] 构建 Vue 前端到 site/ ...")
+    pnpm = resolve_pnpm_command()
     if not (FRONTEND_DIR / "node_modules").exists():
         print("未检测到 frontend/node_modules，先执行 pnpm install...")
-        run(["pnpm", "install"], cwd=FRONTEND_DIR, env={"CI": "true"})
-    run(["pnpm", "build"], cwd=FRONTEND_DIR, env={"CI": "true"})
+        run([*pnpm, "install"], cwd=FRONTEND_DIR, env={"CI": "true"})
+    run([*pnpm, "build"], cwd=FRONTEND_DIR, env={"CI": "true"})
 
     index_file = SITE_DIR / "index.html"
     if not index_file.exists():
