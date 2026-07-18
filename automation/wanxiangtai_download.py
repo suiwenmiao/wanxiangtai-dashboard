@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -361,6 +362,44 @@ async def ensure_product_detail_dimensions_all(page) -> bool:
     )
     log(f"维度设置校验: {verify_result}")
     return bool(verify_result and verify_result.get("ok"))
+
+
+async def wait_for_item_report_ready(page, timeout_seconds: int = 180) -> bool:
+    """Wait until the item report page has rendered its controls."""
+    log("等待商品报表页面加载完成...")
+    deadline = time.time() + timeout_seconds
+    last_state = None
+    while time.time() < deadline:
+        try:
+            state = await page.evaluate(
+                """
+() => {
+    const text = document.body?.innerText || '';
+    const hasLoading = /加载中|Loading/i.test(text) || !!document.querySelector('.next-loading, .ant-spin, [class*="loading"], [class*="Loading"]');
+    return {
+        hasProductDetail: text.includes('商品数据明细'),
+        hasDownloadButton: text.includes('下载报表'),
+        hasDimension: text.includes('维度'),
+        textLength: text.length,
+        hasLoading
+    };
+}
+"""
+            )
+            last_state = state
+            if (
+                state.get("hasProductDetail")
+                and state.get("hasDownloadButton")
+                and state.get("hasDimension")
+            ):
+                log(f"商品报表页面已就绪: {state}")
+                return True
+        except Exception as e:
+            last_state = {"error": str(e)}
+        await asyncio.sleep(3)
+
+    log(f"[ERROR] 商品报表页面在 {timeout_seconds} 秒内未加载完成: {last_state}")
+    return False
 
 
 async def open_dialog_date_picker(page):
@@ -874,6 +913,8 @@ def is_login_page(url, title=""):
     """判断当前是否在登录页"""
     u = url.lower()
     t = title.lower()
+    if "#!/login" in u or "/login/index" in u:
+        return True
     if "login.taobao" in u or "login.tmall" in u:
         return True
     if "login" in u and ("alimama" not in u and "1bp.taobao" not in u):
@@ -960,6 +1001,34 @@ async def do_login():
             await browser.close()
             return
 
+        log("正在验证报表页访问权限...")
+        report_ready = False
+        try:
+            await page.goto(ITEM_REPORT_URL, wait_until="domcontentloaded", timeout=60000)
+        except Exception as e:
+            log(f"报表页导航失败: {e}")
+        for i in range(60):
+            await asyncio.sleep(2)
+            try:
+                url = page.url
+                title = await page.title()
+                body_text = await page.evaluate("() => document.body.innerText || ''")
+                has_report_content = "商品报表" in body_text and "下载报表" in body_text
+                if is_logged_in(url, title) and "#!/login" not in url.lower() and has_report_content:
+                    log(f"报表页验证成功！URL: {url}")
+                    report_ready = True
+                    break
+            except Exception:
+                pass
+            elapsed = (i + 1) * 2
+            if elapsed % 30 == 0:
+                log(f"等待报表页登录/授权中... 已等待 {elapsed} 秒")
+
+        if not report_ready:
+            log("[ERROR] 未能验证报表页访问权限，请重新运行 login 模式")
+            await browser.close()
+            return
+
         await asyncio.sleep(5)
         await context.storage_state(path=str(STATE_FILE))
         log(f"登录态已保存到: {STATE_FILE}")
@@ -1043,6 +1112,11 @@ async def do_download():
                 await browser.close()
                 return False
             log(f"已登录 | URL: {url} | 标题: {title}")
+
+            if not await wait_for_item_report_ready(page):
+                await page.screenshot(path=str(SCREENSHOT_DIR / "item_report_not_ready.png"))
+                await browser.close()
+                return False
 
             await page.screenshot(path=str(SCREENSHOT_DIR / "01_item_report.png"))
 
