@@ -45,6 +45,14 @@ def generate_data() -> None:
     run([sys.executable, str(AUTOMATION_DIR / "generate_dashboard_data.py")])
 
 
+def encrypt_creative_data() -> None:
+    print("[2/4] 加密创意看板数据...")
+    node = shutil.which("node") or "/opt/homebrew/bin/node"
+    if not Path(node).exists():
+        raise SystemExit("[ERROR] 未找到 node，无法加密创意看板数据。")
+    run([node, str(AUTOMATION_DIR / "encrypt_creative_data.mjs")])
+
+
 def resolve_pnpm_command() -> list[str]:
     configured = os.environ.get("PNPM_BIN")
     if configured:
@@ -80,7 +88,7 @@ def resolve_pnpm_command() -> list[str]:
 
 
 def build_frontend() -> None:
-    print("[2/3] 构建 Vue 前端到 site/ ...")
+    print("[3/4] 构建 Vue 前端到 site/ ...")
     pnpm = resolve_pnpm_command()
     if not (FRONTEND_DIR / "node_modules").exists():
         print("未检测到 frontend/node_modules，先执行 pnpm install...")
@@ -108,9 +116,13 @@ def ensure_git_repo() -> None:
 
 
 def commit_site(message: str) -> bool:
-    print("[3/3] 提交 site/ 发布产物...")
+    print("[4/4] 提交 site/ 发布产物...")
     ensure_git_repo()
     run(["git", "add", "site"])
+    # The project ignores raw data/ downloads, but the static site's JSON must publish.
+    site_data = SITE_DIR / "data"
+    if site_data.exists():
+        run(["git", "add", "-f", str(site_data)])
     dashboard_data = FRONTEND_DIR / "src" / "data" / "dashboard-data.json"
     if dashboard_data.exists():
         run(["git", "add", "-f", str(dashboard_data)])
@@ -158,6 +170,7 @@ def main() -> None:
 
     if not args.skip_data:
         generate_data()
+    encrypt_creative_data()
     if not args.skip_build:
         build_frontend()
     else:

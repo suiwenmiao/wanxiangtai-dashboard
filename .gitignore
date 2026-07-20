@@ -6,6 +6,7 @@ __pycache__/
 venv/
 env/
 .env
+frontend/private-data/
 frontend/node_modules/
 .check-dist/
 
@@ -32,3 +33,5 @@ alimama_config.json
 !site/build-meta.json
 !site/assets/
 !site/assets/**
+!site/data/
+!site/data/**

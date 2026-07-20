@@ -7,14 +7,15 @@
       </div>
       <div class="header-right">
         <nav class="tab-nav">
-          <button :class="{ active: tab === 'dashboard' }" @click="tab = 'dashboard'">品类看板</button>
-          <button :class="{ active: tab === 'product' }" @click="tab = 'product'">商品主体</button>
+          <button :class="{ active: tab === 'dashboard' }" @click="selectTab('dashboard')">品类看板</button>
+          <button :class="{ active: tab === 'product' }" @click="selectTab('product')">商品主体</button>
+          <button :class="{ active: tab === 'creative' }" @click="selectTab('creative')">素材看板</button>
         </nav>
         <div class="status-pill">{{ filtered.length }} 条记录</div>
       </div>
     </div>
 
-    <div class="filter-bar">
+    <div v-if="tab !== 'creative'" class="filter-bar">
       <div class="filter-group">
         <label>开始日期</label>
         <input v-model="startDate" type="date" :min="payload.dateMin" :max="payload.dateMax" />
@@ -42,16 +43,18 @@
 
     <DashboardPage v-if="tab === 'dashboard'" :filtered="filtered" :prevFiltered="prevFiltered" :category="category" :allSubCats="subCategoryFiltered" />
     <ProductPage   v-if="tab === 'product'"   :filtered="filtered" :prevFiltered="prevFiltered" />
+    <CreativePage  v-if="tab === 'creative'" />
   </main>
 </template>
 
 <script setup>
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import DashboardPage from "./components/DashboardPage.vue";
 import ProductPage from "./components/ProductPage.vue";
+import CreativePage from "./components/CreativePage.vue";
 import payload from "./data/dashboard-data.json";
 
-const tab = ref("dashboard");
+const tab = ref(location.hash === "#/creative" ? "creative" : "dashboard");
 const startDate = ref(payload.dateMax || "");
 const endDate = ref(payload.dateMax || "");
 const category = ref("all");
@@ -122,6 +125,16 @@ function setQuickRange(days) {
   startDate.value = start.toISOString().slice(0, 10);
   endDate.value = end.toISOString().slice(0, 10);
 }
+
+function selectTab(nextTab) {
+  tab.value = nextTab;
+  history.replaceState(null, "", nextTab === "creative" ? "#/creative" : "#/");
+}
+function syncTabFromHash() {
+  tab.value = location.hash === "#/creative" ? "creative" : "dashboard";
+}
+onMounted(() => window.addEventListener("hashchange", syncTabFromHash));
+onBeforeUnmount(() => window.removeEventListener("hashchange", syncTabFromHash));
 </script>
 <style scoped>
 .huanbi-label { font-size: 12px; color: #888; white-space: nowrap; padding: 6px 10px; background: #f0f2f5; border-radius: 4px; }
