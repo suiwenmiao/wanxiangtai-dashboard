@@ -151,6 +151,11 @@ function base64Bytes(value) {
   const binary = atob(value);
   return Uint8Array.from(binary, char => char.charCodeAt(0));
 }
+async function decodePayload(envelope, decrypted) {
+  if (envelope.compression !== "gzip") return JSON.parse(new TextDecoder().decode(decrypted));
+  const stream = new Blob([decrypted]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return JSON.parse(new TextDecoder().decode(await new Response(stream).arrayBuffer()));
+}
 async function unlock() {
   unlocking.value = true;
   authError.value = "";
@@ -165,7 +170,7 @@ async function unlock() {
       { name: "AES-GCM", length: 256 }, false, ["decrypt"],
     );
     const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv: base64Bytes(envelope.iv) }, key, base64Bytes(envelope.ciphertext));
-    payload.value = JSON.parse(new TextDecoder().decode(decrypted));
+    payload.value = await decodePayload(envelope, decrypted);
     cryptoKey.value = key;
     startDate.value = payload.value.dateMax || "";
     endDate.value = payload.value.dateMax || "";

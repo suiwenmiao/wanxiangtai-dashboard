@@ -502,6 +502,11 @@ function base64Bytes(value) {
   const binary = atob(value);
   return Uint8Array.from(binary, char => char.charCodeAt(0));
 }
+async function decodePayload(envelope, decrypted) {
+  if (envelope.compression !== "gzip") return JSON.parse(new TextDecoder().decode(decrypted));
+  const stream = new Blob([decrypted]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return JSON.parse(new TextDecoder().decode(await new Response(stream).arrayBuffer()));
+}
 async function loadCreativeData() {
   loading.value = true;
   loadError.value = "";
@@ -514,7 +519,7 @@ async function loadCreativeData() {
       props.cryptoKey,
       base64Bytes(envelope.ciphertext),
     );
-    const payload = JSON.parse(new TextDecoder().decode(decrypted));
+    const payload = await decodePayload(envelope, decrypted);
     const index = payload.index || {};
     const categoryPayloads = Object.values(payload.categories || {});
     if (!categoryPayloads.length) throw new Error("加密素材数据为空。");
