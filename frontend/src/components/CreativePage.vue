@@ -1,17 +1,5 @@
 <template>
-  <div class="creative-access">
-    <section v-if="locked" class="creative-login" aria-labelledby="creative-login-title">
-      <div class="creative-login-mark">素材看板</div>
-      <h2 id="creative-login-title">解锁私有投放数据</h2>
-      <p>输入访问密码后，数据仅在当前浏览器中本地解密。</p>
-      <form @submit.prevent="unlock">
-        <label for="creative-password">访问密码</label>
-        <input id="creative-password" v-model="password" type="password" autocomplete="current-password" :disabled="unlocking" autofocus />
-        <p v-if="authError" class="creative-login-error">{{ authError }}</p>
-        <button type="submit" :disabled="unlocking || !password">{{ unlocking ? "正在解锁..." : "进入素材看板" }}</button>
-      </form>
-    </section>
-    <div v-else class="creative-page">
+  <div class="creative-page">
     <div class="creative-toolbar">
       <div>
         <div class="creative-title">素材表现</div>
@@ -211,7 +199,6 @@
         </table>
       </div>
     </section>
-    </div>
   </div>
 </template>
 
@@ -219,12 +206,9 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { formatMoney, formatPercent, sumMetrics } from "../utils/metrics";
 
+const props = defineProps({ cryptoKey: { required: true } });
 const creative = ref({ records: [], dateStart: "", dateEnd: "" });
 const publicDataUrl = filename => `${import.meta.env.BASE_URL}data/${filename}`;
-const locked = ref(true);
-const password = ref("");
-const unlocking = ref(false);
-const authError = ref("");
 const indexCategories = ref([]);
 const loading = ref(false);
 const loadError = ref("");
@@ -518,25 +502,16 @@ function base64Bytes(value) {
   const binary = atob(value);
   return Uint8Array.from(binary, char => char.charCodeAt(0));
 }
-async function unlock() {
-  unlocking.value = true;
-  authError.value = "";
+async function loadCreativeData() {
+  loading.value = true;
+  loadError.value = "";
   try {
     const response = await fetch(publicDataUrl("creative-data.enc.json"), { cache: "no-store" });
     if (!response.ok) throw new Error("未找到加密素材数据，请稍后重试。");
     const envelope = await response.json();
-    const encoder = new TextEncoder();
-    const passwordKey = await crypto.subtle.importKey("raw", encoder.encode(password.value), "PBKDF2", false, ["deriveKey"]);
-    const key = await crypto.subtle.deriveKey(
-      { name: "PBKDF2", salt: base64Bytes(envelope.kdf.salt), iterations: envelope.kdf.iterations, hash: envelope.kdf.hash },
-      passwordKey,
-      { name: "AES-GCM", length: 256 },
-      false,
-      ["decrypt"],
-    );
     const decrypted = await crypto.subtle.decrypt(
       { name: "AES-GCM", iv: base64Bytes(envelope.iv) },
-      key,
+      props.cryptoKey,
       base64Bytes(envelope.ciphertext),
     );
     const payload = JSON.parse(new TextDecoder().decode(decrypted));
@@ -553,16 +528,16 @@ async function unlock() {
     selectedEndDate.value = creative.value.dateEnd;
     appliedStartDate.value = creative.value.dateStart;
     appliedEndDate.value = creative.value.dateEnd;
-    locked.value = false;
-    password.value = "";
   } catch (error) {
-    authError.value = "密码不正确，或加密数据暂不可用。";
+    creative.value = { records: [], dateStart: "", dateEnd: "" };
+    loadError.value = "素材数据解密失败，请重新打开看板后再试。";
   } finally {
-    unlocking.value = false;
+    loading.value = false;
   }
 }
 onMounted(() => {
   document.addEventListener("pointerdown", closePickersOnOutsideClick);
+  loadCreativeData();
 });
 onBeforeUnmount(() => document.removeEventListener("pointerdown", closePickersOnOutsideClick));
 </script>

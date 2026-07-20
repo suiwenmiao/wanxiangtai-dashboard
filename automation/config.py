@@ -17,7 +17,7 @@ PROJECT_DIR = AUTOMATION_DIR.parent
 PROJECT_PARENT = PROJECT_DIR.parent
 FRONTEND_DIR = PROJECT_DIR / "frontend"
 SITE_DIR = PROJECT_DIR / "site"
-FRONTEND_DATA_FILE = FRONTEND_DIR / "src" / "data" / "dashboard-data.json"
+FRONTEND_DATA_FILE = FRONTEND_DIR / "private-data" / "dashboard-data.json"
 HOME = Path.home()
 
 

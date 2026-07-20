@@ -55,12 +55,15 @@
           <th class="sortable" @click="toggleSort('subjectId')">主体ID<span :class="['sort-arrow',{active:sortField==='subjectId'}]">{{ sortArrow('subjectId') }}</span></th>
           <th class="sortable" @click="toggleSort('subjectName')">主体名称<span :class="['sort-arrow',{active:sortField==='subjectName'}]">{{ sortArrow('subjectName') }}</span></th>
           <th class="sortable" @click="toggleSort('subCategory')">细类<span :class="['sort-arrow',{active:sortField==='subCategory'}]">{{ sortArrow('subCategory') }}</span></th>
+          <th class="num">展现量</th>
+          <th class="num">点击量</th>
           <th class="num sortable" @click="toggleSort('cost')">花费<span :class="['sort-arrow',{active:sortField==='cost'}]">{{ sortArrow('cost') }}</span></th>
           <th class="num sortable" @click="toggleSort('totalSales')">总成交金额<span :class="['sort-arrow',{active:sortField==='totalSales'}]">{{ sortArrow('totalSales') }}</span></th>
-          <th class="num sortable" @click="toggleSort('totalRoi')">ROI<span :class="['sort-arrow',{active:sortField==='totalRoi'}]">{{ sortArrow('totalRoi') }}</span></th>
+          <th class="num">订单量</th>
+          <th class="num">CPC</th>
           <th class="num">点击率</th>
           <th class="num">转化率</th>
-          <th class="num">CPC</th>
+          <th class="num sortable" @click="toggleSort('totalRoi')">ROI<span :class="['sort-arrow',{active:sortField==='totalRoi'}]">{{ sortArrow('totalRoi') }}</span></th>
         </tr></thead>
         <tbody>
           <template v-for="s in displaySubjects" :key="s.subjectId">
@@ -68,15 +71,18 @@
               <td class="subject-click" @click="toggleDetail(s.subjectId)">{{ s.subjectId }}</td>
               <td>{{ truncateName(s.subjectName) }}</td>
               <td>{{ s.subCategory }}</td>
+              <td class="num">{{ s.impressions.toLocaleString() }}</td>
+              <td class="num">{{ s.clicks.toLocaleString() }}</td>
               <td class="num">¥{{ formatMoney(s.cost) }}</td>
               <td class="num">¥{{ formatMoney(s.totalSales) }}</td>
-              <td :class="['num', roiClass(s.totalRoi)]">{{ s.totalRoi.toFixed(2) }}</td>
+              <td class="num">{{ s.orders.toLocaleString() }}</td>
+              <td class="num">¥{{ s.clicks > 0 ? (s.cost / s.clicks).toFixed(2) : '0.00' }}</td>
               <td class="num">{{ formatPercent(s.impressions > 0 ? s.clicks / s.impressions : 0) }}</td>
               <td class="num">{{ formatPercent(s.clicks > 0 ? s.orders / s.clicks : 0) }}</td>
-              <td class="num">¥{{ s.clicks > 0 ? (s.cost / s.clicks).toFixed(2) : '0.00' }}</td>
+              <td :class="['num', roiClass(s.totalRoi)]">{{ s.totalRoi.toFixed(2) }}</td>
             </tr>
             <tr v-if="expandedId === s.subjectId" :key="'detail-'+s.subjectId">
-              <td colspan="9" style="padding:0">
+              <td colspan="12" style="padding:0">
                 <div class="subj-inline-detail">
                   <div v-for="group in getScenarioGroups(s)" :key="group.scenario" class="scenario-block">
                     <div class="scenario-header"><span>推广场景：{{ group.scenario }}</span><span class="summary">花费 ¥{{ formatMoney(group.cost) }} · 成交 ¥{{ formatMoney(group.totalSales) }} · ROI {{ group.roi.toFixed(2) }}</span></div>
@@ -99,7 +105,7 @@
               </td>
             </tr>
           </template>
-          <tr v-if="displaySubjects.length === 0"><td colspan="9" class="empty">暂无数据</td></tr>
+          <tr v-if="displaySubjects.length === 0"><td colspan="12" class="empty">暂无数据</td></tr>
         </tbody>
       </table></div>
     </div>
@@ -109,9 +115,8 @@
 <script setup>
 import { computed, ref } from "vue";
 import { formatMoney, formatPercent, sumMetrics } from "../utils/metrics";
-import payload from "../data/dashboard-data.json";
 
-const props = defineProps({ filtered: { type: Array, required: true }, prevFiltered: { type: Array, default: [] } });
+const props = defineProps({ payload: { type: Object, required: true }, filtered: { type: Array, required: true }, prevFiltered: { type: Array, default: [] } });
 const expandedId = ref(null);
 const sortField = ref('cost');
 const sortDir = ref('desc');
@@ -137,9 +142,9 @@ function hbText(v) { if (v == null) return ''; return (v > 0 ? '+' : '') + v.toF
 // Channel scenario summary — estimate date-filtered metrics from subjects' full-period scenario proportions
 const scenarioSummary = computed(() => {
   const dates = new Set(props.filtered.map(r => r.date));
-  const allDates = dates.size >= payload.records.length;
+  const allDates = dates.size >= props.payload.records.length;
   const cats = new Set(props.filtered.map(r => r.category));
-  const isAllCats = cats.size >= payload.categories.length;
+  const isAllCats = cats.size >= props.payload.categories.length;
   function aggregate(records) {
     const agg = {};
     for (const r of records) {
@@ -165,11 +170,11 @@ const scenarioSummary = computed(() => {
       cpc: a.clicks > 0 ? a.cost / a.clicks : 0,
     })).sort((a, b) => b.cost - a.cost);
   }
-  let curRecs = payload.categoryScenarioRecords;
+  let curRecs = props.payload.categoryScenarioRecords;
   if (!isAllCats && cats.size > 0) curRecs = curRecs.filter(r => cats.has(r.category));
   if (!allDates && dates.size > 0) curRecs = curRecs.filter(r => dates.has(r.date));
   const current = aggregate(curRecs);
-  let prevRecs = props.prevFiltered.length ? [...payload.categoryScenarioRecords] : [];
+  let prevRecs = props.prevFiltered.length ? [...props.payload.categoryScenarioRecords] : [];
   if (prevRecs.length) {
     const prevDates = new Set(props.prevFiltered.map(r => r.date));
     if (!isAllCats && cats.size > 0) prevRecs = prevRecs.filter(r => cats.has(r.category));
@@ -186,16 +191,16 @@ const displaySubjects = computed(() => {
   // Compute from date-filtered records + subjectDateRecords
   const dates = new Set(props.filtered.map(r => r.date));
   const cats = new Set(props.filtered.map(r => r.category));
-  const allCats = cats.size >= payload.categories.length;
-  const isFullRange = dates.size >= payload.records.length;
+  const allCats = cats.size >= props.payload.categories.length;
+  const isFullRange = dates.size >= props.payload.records.length;
 
   // Build subject metadata lookup
   const metaMap = {};
-  for (const s of payload.subjects) metaMap[s.subjectId] = s;
+  for (const s of props.payload.subjects) metaMap[s.subjectId] = s;
 
   // If full date range, use cached subjects (much faster)
-  if (isFullRange || dates.size === 0 || !payload.subjectDateRecords) {
-    let result = payload.subjects;
+  if (isFullRange || dates.size === 0 || !props.payload.subjectDateRecords) {
+    let result = props.payload.subjects;
     if (!allCats && cats.size > 0) result = result.filter(s => cats.has(s.category));
     return result.map(s => ({ ...s, totalRoi: s.cost > 0 ? s.totalSales / s.cost : 0 }))
       .sort((a, b) => { const mul = sortDir.value==='desc'?-1:1; const va=a[sortField.value],vb=b[sortField.value]; return typeof va==='string'?(va||'').localeCompare(vb||'')*mul:((va||0)-(vb||0))*mul; })
@@ -203,7 +208,7 @@ const displaySubjects = computed(() => {
   }
 
   // Filter subjectDateRecords by selected dates
-  let sdr = payload.subjectDateRecords.filter(r => dates.has(r.date));
+  let sdr = props.payload.subjectDateRecords.filter(r => dates.has(r.date));
   // Aggregate by subjectId
   const agg = {};
   for (const r of sdr) {
@@ -313,8 +318,8 @@ function roiClass(v) { return v >= 3 ? "roi-good" : v < 1 ? "roi-risk" : ""; }
 function getScenarioGroups(subject) {
   // Filter subjectPlanRecords by subjectId and selected dates
   const dates = new Set(props.filtered.map(r => r.date));
-  const allDates = dates.size >= payload.records.length;
-  let records = payload.subjectPlanRecords.filter(r => r.subjectId === subject.subjectId);
+  const allDates = dates.size >= props.payload.records.length;
+  let records = props.payload.subjectPlanRecords.filter(r => r.subjectId === subject.subjectId);
   if (!allDates && dates.size > 0) {
     records = records.filter(r => dates.has(r.date));
   }

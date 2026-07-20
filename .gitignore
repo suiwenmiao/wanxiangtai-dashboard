@@ -7,6 +7,7 @@ venv/
 env/
 .env
 frontend/private-data/
+frontend/src/data/dashboard-data.json
 frontend/node_modules/
 .check-dist/
 

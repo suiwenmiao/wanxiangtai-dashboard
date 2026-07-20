@@ -123,10 +123,6 @@ def commit_site(message: str) -> bool:
     site_data = SITE_DIR / "data"
     if site_data.exists():
         run(["git", "add", "-f", str(site_data)])
-    dashboard_data = FRONTEND_DIR / "src" / "data" / "dashboard-data.json"
-    if dashboard_data.exists():
-        run(["git", "add", "-f", str(dashboard_data)])
-
     diff = run(["git", "diff", "--cached", "--quiet"], check=False)
     if diff.returncode == 0:
         print("site/ 没有变化，无需提交。")

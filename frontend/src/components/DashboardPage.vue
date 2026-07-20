@@ -41,8 +41,9 @@
     </div>
 
     <!-- Charts -->
-    <div class="chart-row full">
-      <div class="chart-container"><div class="chart-title">每日花费与成交金额趋势</div><EChart :option="trendOption" classes="echart tall" /></div>
+    <div class="chart-row">
+      <div class="chart-container"><div class="chart-title">每日花费与 CVR 环比趋势</div><EChart :option="trendOption" /></div>
+      <div class="chart-container"><div class="chart-title">每日点击量与 CPC 环比趋势</div><EChart :option="clickCpcOption" /></div>
     </div>
     <div class="chart-row">
       <div class="chart-container"><div class="chart-title">每日 ROI 趋势</div><EChart :option="roiOption" /></div>
@@ -55,46 +56,58 @@
       <div class="table-wrap"><table>
         <thead><tr>
           <th>{{ selectedCategory ? '细类' : '品类' }}</th>
+          <th class="num">展现量</th>
+          <th class="num">点击量</th>
           <th class="num">花费</th>
           <th class="num">总成交金额</th>
-          <th class="num">ROI</th>
+          <th class="num">订单量</th>
+          <th class="num">CPC</th>
           <th class="num">点击率</th>
           <th class="num">转化率</th>
-          <th class="num">CPC</th>
+          <th class="num">ROI</th>
         </tr></thead>
         <tbody>
           <template v-if="selectedCategory">
             <tr v-for="row in subRows" :key="row.subCategory">
               <td>{{ row.subCategory }}</td>
+              <td class="num">{{ row.impressions.toLocaleString() }}</td>
+              <td class="num">{{ row.clicks.toLocaleString() }}</td>
               <td class="num">¥{{ formatMoney(row.cost) }}</td>
               <td class="num">¥{{ formatMoney(row.totalSales) }}</td>
-              <td :class="['num', roiClass(row.totalRoi)]">{{ row.totalRoi.toFixed(2) }}</td>
+              <td class="num">{{ row.orders.toLocaleString() }}</td>
+              <td class="num">¥{{ row.cpc.toFixed(2) }}</td>
               <td class="num">{{ formatPercent(row.ctr) }}</td>
               <td class="num">{{ formatPercent(row.cvr) }}</td>
-              <td class="num">¥{{ row.cpc.toFixed(2) }}</td>
+              <td :class="['num', roiClass(row.totalRoi)]">{{ row.totalRoi.toFixed(2) }}</td>
             </tr>
             <tr class="summary-row" v-if="subRows.length > 0">
               <td><strong>{{ selectedCategory }}</strong></td>
+              <td class="num"><strong>{{ categoryTotal.impressions.toLocaleString() }}</strong></td>
+              <td class="num"><strong>{{ categoryTotal.clicks.toLocaleString() }}</strong></td>
               <td class="num"><strong>¥{{ formatMoney(categoryTotal.cost) }}</strong></td>
               <td class="num"><strong>¥{{ formatMoney(categoryTotal.totalSales) }}</strong></td>
-              <td :class="['num', roiClass(categoryTotal.totalRoi)]"><strong>{{ categoryTotal.totalRoi.toFixed(2) }}</strong></td>
+              <td class="num"><strong>{{ categoryTotal.orders.toLocaleString() }}</strong></td>
+              <td class="num"><strong>¥{{ categoryTotal.cpc.toFixed(2) }}</strong></td>
               <td class="num"><strong>{{ formatPercent(categoryTotal.ctr) }}</strong></td>
               <td class="num"><strong>{{ formatPercent(categoryTotal.cvr) }}</strong></td>
-              <td class="num"><strong>¥{{ categoryTotal.cpc.toFixed(2) }}</strong></td>
+              <td :class="['num', roiClass(categoryTotal.totalRoi)]"><strong>{{ categoryTotal.totalRoi.toFixed(2) }}</strong></td>
             </tr>
           </template>
           <template v-else>
             <tr v-for="row in categoryRows" :key="row.category">
               <td><strong>{{ row.category }}</strong></td>
+              <td class="num">{{ row.impressions.toLocaleString() }}</td>
+              <td class="num">{{ row.clicks.toLocaleString() }}</td>
               <td class="num">¥{{ formatMoney(row.cost) }}</td>
               <td class="num">¥{{ formatMoney(row.totalSales) }}</td>
-              <td :class="['num', roiClass(row.totalRoi)]">{{ row.totalRoi.toFixed(2) }}</td>
+              <td class="num">{{ row.orders.toLocaleString() }}</td>
+              <td class="num">¥{{ row.cpc.toFixed(2) }}</td>
               <td class="num">{{ formatPercent(row.ctr) }}</td>
               <td class="num">{{ formatPercent(row.cvr) }}</td>
-              <td class="num">¥{{ row.cpc.toFixed(2) }}</td>
+              <td :class="['num', roiClass(row.totalRoi)]">{{ row.totalRoi.toFixed(2) }}</td>
             </tr>
           </template>
-          <tr v-if="(selectedCategory ? subRows.length : categoryRows.length) === 0"><td colspan="7" class="empty">暂无数据</td></tr>
+          <tr v-if="(selectedCategory ? subRows.length : categoryRows.length) === 0"><td colspan="10" class="empty">暂无数据</td></tr>
         </tbody>
       </table></div>
     </div>
@@ -104,15 +117,22 @@
 <script setup>
 import { computed } from "vue";
 import EChart from "./EChart.vue";
-import payload from "../data/dashboard-data.json";
 import { byDate, byCategory, formatMoney, formatPercent, sumMetrics } from "../utils/metrics";
 
-const props = defineProps({ filtered: { type: Array, required: true }, prevFiltered: { type: Array, default: [] }, category: String, allSubCats: { type: Array, default: () => [] } });
+const props = defineProps({ payload: { type: Object, required: true }, filtered: { type: Array, required: true }, prevFiltered: { type: Array, default: [] }, category: String, allSubCats: { type: Array, default: () => [] } });
 
 const selectedCategory = computed(() => props.category && props.category !== "all" ? props.category : null);
 const totals = computed(() => sumMetrics(props.filtered));
 const prevTot = computed(() => props.prevFiltered.length ? sumMetrics(props.prevFiltered) : null);
 const dailyRows = computed(() => byDate(props.filtered));
+const prevDailyRows = computed(() => byDate(props.prevFiltered));
+const dailyComparisonRows = computed(() => dailyRows.value.map((row, index) => ({
+  ...row,
+  prevCost: prevDailyRows.value[index]?.cost ?? null,
+  prevClicks: prevDailyRows.value[index]?.clicks ?? null,
+  prevCpc: prevDailyRows.value[index]?.cpc ?? null,
+  prevCvr: prevDailyRows.value[index]?.cvr ?? null,
+})));
 const categoryRows = computed(() => byCategory(props.filtered));
 
 const hb = computed(() => {
@@ -182,17 +202,37 @@ const categoryTotal = computed(() => { if (!selectedCategory.value) return null;
 
 function roiClass(v) { return v >= 3 ? "roi-good" : v < 1 ? "roi-risk" : ""; }
 
-const axisDates = computed(() => dailyRows.value.map((r) => r.date));
+const axisDates = computed(() => dailyComparisonRows.value.map((r) => r.date));
 const mks = { formatter: (v) => typeof v === 'number' ? formatMoney(v) : v };
 
 const trendOption = computed(() => ({
-  tooltip: { trigger: "axis" }, legend: { top: 0, data: ["花费", "总成交"] },
-  grid: { left: 56, right: 24, top: 42, bottom: 48 },
+  tooltip: { trigger: "axis" }, legend: { top: 0, data: ["花费", "环比花费", "CVR", "环比 CVR"] },
+  grid: { left: 56, right: 58, top: 42, bottom: 48 },
   xAxis: { type: "category", data: axisDates.value, axisLabel: { rotate: 30 } },
-  yAxis: { type: "value", axisLabel: mks },
+  yAxis: [
+    { type: "value", name: "花费", axisLabel: mks },
+    { type: "value", name: "CVR", axisLabel: { formatter: value => formatPercent(value) }, splitLine: { show: false } },
+  ],
   series: [
-    { name: "花费", type: "line", smooth: true, data: dailyRows.value.map(r => Number(r.cost.toFixed(2))), itemStyle: { color: "#ff6b6b" }, areaStyle: { opacity: 0.08 } },
-    { name: "总成交", type: "line", smooth: true, data: dailyRows.value.map(r => Number(r.totalSales.toFixed(2))), itemStyle: { color: "#4ecdc4" }, areaStyle: { opacity: 0.08 } }
+    { name: "花费", type: "bar", yAxisIndex: 0, data: dailyComparisonRows.value.map(r => Number(r.cost.toFixed(2))), itemStyle: { color: "#ee6a5f" }, barMaxWidth: 28 },
+    { name: "环比花费", type: "bar", yAxisIndex: 0, data: dailyComparisonRows.value.map(r => r.prevCost == null ? null : Number(r.prevCost.toFixed(2))), itemStyle: { color: "#b9c4d4" }, barMaxWidth: 28 },
+    { name: "CVR", type: "line", yAxisIndex: 1, smooth: true, data: dailyComparisonRows.value.map(r => Number(r.cvr.toFixed(4))), itemStyle: { color: "#3b82b6" }, lineStyle: { width: 3 }, symbolSize: 7 },
+    { name: "环比 CVR", type: "line", yAxisIndex: 1, smooth: true, data: dailyComparisonRows.value.map(r => r.prevCvr == null ? null : Number(r.prevCvr.toFixed(4))), itemStyle: { color: "#7f8fa6" }, lineStyle: { type: "dashed", width: 2 }, symbolSize: 6 },
+  ]
+}));
+const clickCpcOption = computed(() => ({
+  tooltip: { trigger: "axis" }, legend: { top: 0, data: ["点击量", "环比点击量", "CPC", "环比 CPC"] },
+  grid: { left: 56, right: 58, top: 42, bottom: 48 },
+  xAxis: { type: "category", data: axisDates.value, axisLabel: { rotate: 30 } },
+  yAxis: [
+    { type: "value", name: "点击量", minInterval: 1 },
+    { type: "value", name: "CPC", axisLabel: { formatter: value => `¥${Number(value).toFixed(2)}` }, splitLine: { show: false } },
+  ],
+  series: [
+    { name: "点击量", type: "bar", yAxisIndex: 0, data: dailyComparisonRows.value.map(r => r.clicks), itemStyle: { color: "#49a6a0" }, barMaxWidth: 28 },
+    { name: "环比点击量", type: "bar", yAxisIndex: 0, data: dailyComparisonRows.value.map(r => r.prevClicks), itemStyle: { color: "#b9c4d4" }, barMaxWidth: 28 },
+    { name: "CPC", type: "line", yAxisIndex: 1, smooth: true, data: dailyComparisonRows.value.map(r => Number(r.cpc.toFixed(2))), itemStyle: { color: "#6b7fd7" }, lineStyle: { width: 3 }, symbolSize: 7 },
+    { name: "环比 CPC", type: "line", yAxisIndex: 1, smooth: true, data: dailyComparisonRows.value.map(r => r.prevCpc == null ? null : Number(r.prevCpc.toFixed(2))), itemStyle: { color: "#7f8fa6" }, lineStyle: { type: "dashed", width: 2 }, symbolSize: 6 },
   ]
 }));
 const roiOption = computed(() => ({
@@ -206,7 +246,7 @@ const roiOption = computed(() => ({
 }));
 const scenarioRows = computed(() => {
   const agg = {};
-  for (const s of payload.subjects) {
+  for (const s of props.payload.subjects) {
     if (selectedCategory.value && s.category !== selectedCategory.value) continue;
     for (const sc of s.scenarios) {
       if (!sc.scenario) continue;
