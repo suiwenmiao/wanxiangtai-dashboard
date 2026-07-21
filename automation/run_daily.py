@@ -21,11 +21,17 @@ from config import AUTO_DEPLOY, AUTOMATION_DIR, DAILY_LOG_FILE
 SCRIPT_DIR = AUTOMATION_DIR
 PYTHON = sys.executable
 DOWNLOAD_SCRIPT = SCRIPT_DIR / "wanxiangtai_download.py"
+CREATIVE_REPORT_SCRIPT = SCRIPT_DIR / "creative_report_probe.py"
+CREATIVE_MERGE_SCRIPT = SCRIPT_DIR / "merge_creative_reports.py"
+CREATIVE_DATA_SCRIPT = SCRIPT_DIR / "generate_creative_data.py"
+CREATIVE_DEDUP_SCRIPT = SCRIPT_DIR / "dedupe_creative_images.py"
 DEPLOY_SCRIPT = SCRIPT_DIR / "deploy_static.py"
 LOG_FILE = DAILY_LOG_FILE
 RUN_HOUR = 7
 RUN_MINUTE = 30
 DOWNLOAD_TIMEOUT = int(os.environ.get("WORKBUDDY_DOWNLOAD_TIMEOUT", "1200"))
+CREATIVE_DOWNLOAD_TIMEOUT = int(os.environ.get("WORKBUDDY_CREATIVE_DOWNLOAD_TIMEOUT", "1200"))
+CREATIVE_DEDUP_TIMEOUT = int(os.environ.get("WORKBUDDY_CREATIVE_DEDUP_TIMEOUT", "600"))
 DEPLOY_TIMEOUT = int(os.environ.get("WORKBUDDY_DEPLOY_TIMEOUT", "600"))
 DOWNLOAD_ATTEMPTS = int(os.environ.get("WORKBUDDY_DOWNLOAD_ATTEMPTS", "6"))
 DOWNLOAD_RETRY_DELAY = int(os.environ.get("WORKBUDDY_DOWNLOAD_RETRY_DELAY", "1800"))
@@ -103,6 +109,63 @@ def run_download(attempt: int = 1):
         return False
 
 
+def run_creative_pipeline() -> bool:
+    """Download yesterday's creative report and rebuild the full material history."""
+    log("[步骤2] 开始更新创意素材看板...")
+    download_env = os.environ.copy()
+    history_env = os.environ.copy()
+    history_start = history_env.get("WORKBUDDY_CREATIVE_HISTORY_START", "2026-07-01")
+    history_end = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    history_env["WORKBUDDY_REPORT_START"] = history_start
+    history_env["WORKBUDDY_REPORT_END"] = history_end
+    history_env.pop("WORKBUDDY_CREATIVE_REPORT_FILE", None)
+    log(f"  创意数据范围: {history_start} 至 {history_end}")
+    steps = [
+        ("下载创意报表", [PYTHON, str(CREATIVE_REPORT_SCRIPT)], CREATIVE_DOWNLOAD_TIMEOUT, download_env),
+        ("合并创意历史报表", [PYTHON, str(CREATIVE_MERGE_SCRIPT)], DOWNLOAD_TIMEOUT, history_env),
+        ("生成创意看板数据", [PYTHON, str(CREATIVE_DATA_SCRIPT)], DOWNLOAD_TIMEOUT, history_env),
+        (
+            "主图视觉去重",
+            [
+                os.environ.get(
+                    "WORKBUDDY_IMAGE_PYTHON",
+                    "/Users/suiwenmiao/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+                ),
+                str(CREATIVE_DEDUP_SCRIPT),
+            ],
+            CREATIVE_DEDUP_TIMEOUT,
+            history_env,
+        ),
+        ("写入去重后的创意数据", [PYTHON, str(CREATIVE_DATA_SCRIPT)], DOWNLOAD_TIMEOUT, history_env),
+    ]
+    try:
+        for label, command, timeout, env in steps:
+            result = subprocess.run(
+                command,
+                cwd=SCRIPT_DIR,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            log(f"  创意步骤 {label} 退出码: {result.returncode}")
+            if result.stdout:
+                for line in result.stdout.strip().split("\n")[-15:]:
+                    log(f"    [creative stdout] {line}")
+            if result.stderr:
+                for line in result.stderr.strip().split("\n")[-8:]:
+                    log(f"    [creative stderr] {line}")
+            if result.returncode != 0:
+                return False
+        return True
+    except subprocess.TimeoutExpired as exc:
+        log(f"[ERROR] 创意素材看板步骤超时: {exc.cmd}")
+        return False
+    except Exception as exc:
+        log(f"[ERROR] 创意素材看板更新失败: {exc}")
+        return False
+
+
 def run_deploy():
     """生成静态站点并推送到 GitHub，触发 GitHub Pages 部署"""
     if not AUTO_DEPLOY:
@@ -156,6 +219,9 @@ def run_once() -> bool:
     if not download_ok:
         log("下载或写入大表失败，已达到最大重试次数，跳过部署。")
         return False
+
+    if not run_creative_pipeline():
+        log("[WARN] 创意素材看板更新未完成，将继续发布商品看板与当前可用的创意数据。")
 
     deploy_ok = run_deploy()
     if not deploy_ok:
