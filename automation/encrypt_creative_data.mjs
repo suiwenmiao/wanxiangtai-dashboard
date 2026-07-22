@@ -16,7 +16,9 @@ if (!password) {
 }
 
 const index = JSON.parse(readFileSync(join(privateDir, "creative-index.json"), "utf8"));
-const dashboard = JSON.parse(readFileSync(join(privateDir, "dashboard-data.json"), "utf8"));
+const fullDashboard = JSON.parse(readFileSync(join(privateDir, "dashboard-data.json"), "utf8"));
+const { subjectPlanRecords, ...dashboard } = fullDashboard;
+const productDetails = { subjectPlanRecords };
 const categories = Object.fromEntries(index.categories.map(category => [
   category,
   JSON.parse(readFileSync(join(privateDir, `creative-${category}.json`), "utf8")),
@@ -46,10 +48,14 @@ function encrypt(payload) {
 }
 
 mkdirSync(publicDir, { recursive: true });
-for (const filename of ["creative-index.json", "creative-DT.json", "creative-手机.json", "creative-data.enc.json", "dashboard-data.enc.json"]) {
+for (const filename of ["creative-index.json", "creative-DT.json", "creative-手机.json", "creative-data.enc.json", "dashboard-data.enc.json", "product-details.enc.json"]) {
   rmSync(join(publicDir, filename), { force: true });
 }
-for (const [filename, payload] of [["dashboard-data.enc.json", dashboard], ["creative-data.enc.json", { index, categories }]]) {
+for (const [filename, payload] of [
+  ["dashboard-data.enc.json", dashboard],
+  ["product-details.enc.json", productDetails],
+  ["creative-data.enc.json", { index, categories }],
+]) {
   const { envelope, plaintextBytes, compressedBytes } = encrypt(payload);
   const output = join(publicDir, filename);
   writeFileSync(output, JSON.stringify(envelope) + "\n", "utf8");

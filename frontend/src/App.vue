@@ -53,7 +53,7 @@
     </div>
 
     <DashboardPage v-if="tab === 'dashboard'" :payload="payload" :filtered="filtered" :prevFiltered="prevFiltered" :category="category" :allSubCats="subCategoryFiltered" />
-    <ProductPage   v-if="tab === 'product'"   :payload="payload" :filtered="filtered" :prevFiltered="prevFiltered" />
+    <ProductPage   v-if="tab === 'product'"   :payload="payload" :filtered="filtered" :prevFiltered="prevFiltered" :crypto-key="cryptoKey" />
     <CreativePage  v-if="tab === 'creative'" :crypto-key="cryptoKey" />
   </main>
 </template>

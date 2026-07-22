@@ -84,23 +84,27 @@
             <tr v-if="expandedId === s.subjectId" :key="'detail-'+s.subjectId">
               <td colspan="12" style="padding:0">
                 <div class="subj-inline-detail">
-                  <div v-for="group in getScenarioGroups(s)" :key="group.scenario" class="scenario-block">
-                    <div class="scenario-header"><span>推广场景：{{ group.scenario }}</span><span class="summary">花费 ¥{{ formatMoney(group.cost) }} · 成交 ¥{{ formatMoney(group.totalSales) }} · ROI {{ group.roi.toFixed(2) }}</span></div>
-                    <div class="table-wrap"><table>
-                      <thead><tr><th>计划名称</th><th class="num">花费</th><th class="num">总成交金额</th><th class="num">ROI</th><th class="num">点击率</th><th class="num">转化率</th><th class="num">CPC</th></tr></thead>
-                      <tbody>
-                        <tr v-for="(p, i) in group.plans" :key="i">
-                          <td>{{ p.planName }}</td>
-                          <td class="num">¥{{ formatMoney(p.cost) }}</td>
-                          <td class="num">¥{{ formatMoney(p.totalSales) }}</td>
-                          <td :class="['num', roiClass(p.totalRoi)]">{{ p.totalRoi.toFixed(2) }}</td>
-                          <td class="num">{{ formatPercent(p.impressions > 0 ? p.clicks / p.impressions : 0) }}</td>
-                          <td class="num">{{ formatPercent(p.clicks > 0 ? p.orders / p.clicks : 0) }}</td>
-                          <td class="num">¥{{ p.clicks > 0 ? (p.cost / p.clicks).toFixed(2) : '0.00' }}</td>
-                        </tr>
-                      </tbody>
-                    </table></div>
-                  </div>
+                  <div v-if="planDataLoading" class="empty">正在加载计划明细...</div>
+                  <div v-else-if="planDataError" class="empty">{{ planDataError }}</div>
+                  <template v-else>
+                    <div v-for="group in getScenarioGroups(s)" :key="group.scenario" class="scenario-block">
+                      <div class="scenario-header"><span>推广场景：{{ group.scenario }}</span><span class="summary">花费 ¥{{ formatMoney(group.cost) }} · 成交 ¥{{ formatMoney(group.totalSales) }} · ROI {{ group.roi.toFixed(2) }}</span></div>
+                      <div class="table-wrap"><table>
+                        <thead><tr><th>计划名称</th><th class="num">花费</th><th class="num">总成交金额</th><th class="num">ROI</th><th class="num">点击率</th><th class="num">转化率</th><th class="num">CPC</th></tr></thead>
+                        <tbody>
+                          <tr v-for="(p, i) in group.plans" :key="i">
+                            <td>{{ p.planName }}</td>
+                            <td class="num">¥{{ formatMoney(p.cost) }}</td>
+                            <td class="num">¥{{ formatMoney(p.totalSales) }}</td>
+                            <td :class="['num', roiClass(p.totalRoi)]">{{ p.totalRoi.toFixed(2) }}</td>
+                            <td class="num">{{ formatPercent(p.impressions > 0 ? p.clicks / p.impressions : 0) }}</td>
+                            <td class="num">{{ formatPercent(p.clicks > 0 ? p.orders / p.clicks : 0) }}</td>
+                            <td class="num">¥{{ p.clicks > 0 ? (p.cost / p.clicks).toFixed(2) : '0.00' }}</td>
+                          </tr>
+                        </tbody>
+                      </table></div>
+                    </div>
+                  </template>
                 </div>
               </td>
             </tr>
@@ -116,8 +120,11 @@
 import { computed, ref } from "vue";
 import { formatMoney, formatPercent, sumMetrics } from "../utils/metrics";
 
-const props = defineProps({ payload: { type: Object, required: true }, filtered: { type: Array, required: true }, prevFiltered: { type: Array, default: [] } });
+const props = defineProps({ payload: { type: Object, required: true }, filtered: { type: Array, required: true }, prevFiltered: { type: Array, default: [] }, cryptoKey: { type: CryptoKey, required: true } });
 const expandedId = ref(null);
+const planRecords = ref(null);
+const planDataLoading = ref(false);
+const planDataError = ref("");
 const sortField = ref('cost');
 const sortDir = ref('desc');
 
@@ -319,7 +326,7 @@ function getScenarioGroups(subject) {
   // Filter subjectPlanRecords by subjectId and selected dates
   const dates = new Set(props.filtered.map(r => r.date));
   const allDates = dates.size >= props.payload.records.length;
-  let records = props.payload.subjectPlanRecords.filter(r => r.subjectId === subject.subjectId);
+  let records = (planRecords.value || []).filter(r => r.subjectId === subject.subjectId);
   if (!allDates && dates.size > 0) {
     records = records.filter(r => dates.has(r.date));
   }
@@ -362,5 +369,38 @@ function getScenarioGroups(subject) {
   }));
 }
 
-function toggleDetail(id) { expandedId.value = expandedId.value === id ? null : id; }
+function base64Bytes(value) {
+  const binary = atob(value);
+  return Uint8Array.from(binary, char => char.charCodeAt(0));
+}
+async function decodePayload(envelope, decrypted) {
+  if (envelope.compression !== "gzip") return JSON.parse(new TextDecoder().decode(decrypted));
+  const stream = new Blob([decrypted]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return JSON.parse(new TextDecoder().decode(await new Response(stream).arrayBuffer()));
+}
+async function loadPlanRecords() {
+  if (planRecords.value || planDataLoading.value) return;
+  planDataLoading.value = true;
+  planDataError.value = "";
+  try {
+    const response = await fetch(`${import.meta.env.BASE_URL}data/product-details.enc.json`, { cache: "no-store" });
+    if (!response.ok) throw new Error("未找到计划明细数据");
+    const envelope = await response.json();
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: base64Bytes(envelope.iv) },
+      props.cryptoKey,
+      base64Bytes(envelope.ciphertext),
+    );
+    const payload = await decodePayload(envelope, decrypted);
+    planRecords.value = payload.subjectPlanRecords || [];
+  } catch (error) {
+    planDataError.value = "计划明细加载失败，请刷新后重试。";
+  } finally {
+    planDataLoading.value = false;
+  }
+}
+function toggleDetail(id) {
+  expandedId.value = expandedId.value === id ? null : id;
+  if (expandedId.value) loadPlanRecords();
+}
 </script>
