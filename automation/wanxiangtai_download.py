@@ -610,8 +610,8 @@ async def select_dialog_yesterday_quick_date(page) -> bool:
     return True
 
 
-async def select_dialog_specific_date(page, report_date: str) -> bool:
-    """Select a specific single-day range in the open date picker."""
+async def select_dialog_date_range(page, start_date: str, end_date: str) -> bool:
+    """Select an explicit inclusive date range in the open date picker."""
     await asyncio.sleep(1)
 
     start_result = await page.evaluate(
@@ -635,7 +635,7 @@ async def select_dialog_specific_date(page, report_date: str) -> bool:
     return {clicked: true, targetDate, current: field.value || field.getAttribute('value') || ''};
 }
 """,
-        report_date,
+        start_date,
     )
     log(f"开始日期输入框选择结果: {start_result}")
     if not start_result or not start_result.get("clicked"):
@@ -660,9 +660,9 @@ async def select_dialog_specific_date(page, report_date: str) -> bool:
     return {clicked: true, text: target.text.trim(), title: target.title};
 }
 """,
-        report_date,
+        start_date,
     )
-    log(f"开始日期 {report_date} 选择结果: {date1_result}")
+    log(f"开始日期 {start_date} 选择结果: {date1_result}")
     if not date1_result or not date1_result.get("clicked"):
         return False
     await asyncio.sleep(1)
@@ -688,7 +688,7 @@ async def select_dialog_specific_date(page, report_date: str) -> bool:
     return {clicked: true, targetDate, current: field.value || field.getAttribute('value') || ''};
 }
 """,
-        report_date,
+        end_date,
     )
     log(f"结束日期输入框选择结果: {end_result}")
     if not end_result or not end_result.get("clicked"):
@@ -713,9 +713,9 @@ async def select_dialog_specific_date(page, report_date: str) -> bool:
     return {clicked: true, text: target.text.trim(), title: target.title};
 }
 """,
-        report_date,
+        end_date,
     )
-    log(f"结束日期 {report_date} 选择结果: {date2_result}")
+    log(f"结束日期 {end_date} 选择结果: {date2_result}")
     if not date2_result or not date2_result.get("clicked"):
         return False
     await asyncio.sleep(1)
@@ -750,6 +750,11 @@ async def select_dialog_specific_date(page, report_date: str) -> bool:
         return False
     await asyncio.sleep(1)
     return True
+
+
+async def select_dialog_specific_date(page, report_date: str) -> bool:
+    """Select a specific single-day range in the open date picker."""
+    return await select_dialog_date_range(page, report_date, report_date)
 
 
 async def set_dialog_date_to_report_date(page, report_date: str) -> bool:
@@ -1613,6 +1618,22 @@ def append_to_big_table(csv_path, report_date_str):
     if df_new.empty:
         log(f"[ERROR] 过滤目标日期 {report_date_str} 后没有数据，跳过大表追加")
         return False
+
+    # 万相台偶尔会在日结尚未完成时先返回流量行，但所有花费仍为 0。
+    # 这类半成品数据不能替换看板中的正常数据，应交给每日任务下一轮重试。
+    if "花费" in df_new.columns:
+        cost = pd.to_numeric(df_new["花费"], errors="coerce").fillna(0)
+        traffic_columns = [col for col in ["展现量", "点击量"] if col in df_new.columns]
+        traffic = sum(
+            pd.to_numeric(df_new[col], errors="coerce").fillna(0).sum()
+            for col in traffic_columns
+        )
+        if len(df_new) and cost.sum() <= 0 and traffic > 0:
+            log(
+                "[ERROR] 商品报表花费全为 0 但仍包含展现或点击，"
+                "推测日结未完成；保留当前大表并等待下一轮重试"
+            )
+            return False
 
     # 2. 读取基础表（匹配品类/细类）
     try:
