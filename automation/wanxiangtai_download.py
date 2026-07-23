@@ -1619,18 +1619,23 @@ def append_to_big_table(csv_path, report_date_str):
         log(f"[ERROR] 过滤目标日期 {report_date_str} 后没有数据，跳过大表追加")
         return False
 
-    # 万相台偶尔会在日结尚未完成时先返回流量行，但所有花费仍为 0。
-    # 这类半成品数据不能替换看板中的正常数据，应交给每日任务下一轮重试。
+    # 万相台偶尔会在日结尚未完成时先返回半成品数据，但所有花费仍为 0。
+    # 半成品可能只含订单/成交指标，并不一定已经有展现或点击；只要业务
+    # 指标已有值而全量花费为 0，就不能替换看板中的正常数据。
     if "花费" in df_new.columns:
         cost = pd.to_numeric(df_new["花费"], errors="coerce").fillna(0)
-        traffic_columns = [col for col in ["展现量", "点击量"] if col in df_new.columns]
-        traffic = sum(
+        activity_columns = [
+            col
+            for col in ["展现量", "点击量", "订单行", "总成交笔数", "成交金额", "总成交金额"]
+            if col in df_new.columns
+        ]
+        activity = sum(
             pd.to_numeric(df_new[col], errors="coerce").fillna(0).sum()
-            for col in traffic_columns
+            for col in activity_columns
         )
-        if len(df_new) and cost.sum() <= 0 and traffic > 0:
+        if len(df_new) and cost.sum() <= 0 and activity > 0:
             log(
-                "[ERROR] 商品报表花费全为 0 但仍包含展现或点击，"
+                "[ERROR] 商品报表花费全为 0 但仍包含业务指标，"
                 "推测日结未完成；保留当前大表并等待下一轮重试"
             )
             return False
