@@ -89,11 +89,16 @@ def resolve_pnpm_command() -> list[str]:
 
 def build_frontend() -> None:
     print("[3/4] 构建 Vue 前端到 site/ ...")
-    pnpm = resolve_pnpm_command()
-    if not (FRONTEND_DIR / "node_modules").exists():
+    vite = FRONTEND_DIR / "node_modules" / ".bin" / "vite"
+    if vite.exists():
+        # LaunchAgent may resolve a different pnpm version than the one which
+        # installed node_modules. The local Vite binary is version-stable.
+        run([str(vite), "build"], cwd=FRONTEND_DIR, env={"CI": "true"})
+    else:
+        pnpm = resolve_pnpm_command()
         print("未检测到 frontend/node_modules，先执行 pnpm install...")
         run([*pnpm, "install"], cwd=FRONTEND_DIR, env={"CI": "true"})
-    run([*pnpm, "build"], cwd=FRONTEND_DIR, env={"CI": "true"})
+        run([*pnpm, "build"], cwd=FRONTEND_DIR, env={"CI": "true"})
 
     index_file = SITE_DIR / "index.html"
     if not index_file.exists():
