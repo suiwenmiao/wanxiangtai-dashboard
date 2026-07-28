@@ -70,12 +70,15 @@ def acquire_lock():
         return True
 
 
-def run_download(attempt: int = 1):
-    """运行下载脚本"""
-    log(f"[步骤1] 开始下载并更新大表（第 {attempt}/{DOWNLOAD_ATTEMPTS} 次）")
+def run_download(attempt: int = 1, report_date: str | None = None, force_download: bool = False):
+    """运行下载脚本，可指定历史日期以回补延迟归因数据。"""
+    date_label = f" · {report_date}" if report_date else ""
+    log(f"[步骤1] 开始下载并更新大表（第 {attempt}/{DOWNLOAD_ATTEMPTS} 次{date_label}）")
     try:
         env = os.environ.copy()
-        if attempt > 1:
+        if report_date:
+            env["WORKBUDDY_REPORT_DATE"] = report_date
+        if attempt > 1 or force_download:
             env["FORCE_DOWNLOAD"] = "1"
         result = subprocess.run(
             [PYTHON, str(DOWNLOAD_SCRIPT), "download"],
@@ -207,9 +210,10 @@ def seconds_until_next_run():
 
 
 def run_once() -> bool:
+    report_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     download_ok = False
     for attempt in range(1, max(1, DOWNLOAD_ATTEMPTS) + 1):
-        download_ok = run_download(attempt)
+        download_ok = run_download(attempt, report_date=report_date)
         if download_ok:
             break
         if attempt < DOWNLOAD_ATTEMPTS:
@@ -219,6 +223,17 @@ def run_once() -> bool:
     if not download_ok:
         log("下载或写入大表失败，已达到最大重试次数，跳过部署。")
         return False
+
+    # 万相台的成交及订单会在归因窗口内持续回补。默认回刷最近 3 天，
+    # 覆盖常见的 T+2 归因延迟，同时避免逐日重写大表导致日常任务过长。
+    # 需要更长的历史核验时可显式设置 WORKBUDDY_RECONCILE_DAYS。
+    reconcile_days = max(1, int(os.environ.get("WORKBUDDY_RECONCILE_DAYS", "3")))
+    if reconcile_days > 1:
+        log(f"[步骤1.5] 回补核验最近 {reconcile_days} 天的延迟归因数据...")
+        for offset in range(2, reconcile_days + 1):
+            historical_date = (datetime.now() - timedelta(days=offset)).strftime("%Y-%m-%d")
+            if not run_download(1, report_date=historical_date, force_download=True):
+                log(f"[WARN] 历史回补失败: {historical_date}；下次任务会继续核验。")
 
     if not run_creative_pipeline():
         log("[WARN] 创意素材看板更新未完成，将继续发布商品看板与当前可用的创意数据。")
