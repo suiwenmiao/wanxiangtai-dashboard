@@ -20,13 +20,14 @@
         <nav class="tab-nav">
           <button :class="{ active: tab === 'dashboard' }" @click="selectTab('dashboard')">品类看板</button>
           <button :class="{ active: tab === 'product' }" @click="selectTab('product')">商品主体</button>
+          <button :class="{ active: tab === 'daily' }" @click="selectTab('daily')">投放日报</button>
           <button :class="{ active: tab === 'creative' }" @click="selectTab('creative')">素材看板</button>
         </nav>
         <div class="status-pill">{{ filtered.length }} 条记录</div>
       </div>
     </div>
 
-    <div v-if="tab !== 'creative'" class="filter-bar">
+    <div v-if="tab !== 'creative' && tab !== 'daily'" class="filter-bar">
       <div class="filter-group">
         <label>开始日期</label>
         <input v-model="startDate" type="date" :min="payload.dateMin" :max="payload.dateMax" />
@@ -54,6 +55,7 @@
 
     <DashboardPage v-if="tab === 'dashboard'" :payload="payload" :filtered="filtered" :prevFiltered="prevFiltered" :category="category" :allSubCats="subCategoryFiltered" />
     <ProductPage   v-if="tab === 'product'"   :payload="payload" :filtered="filtered" :prevFiltered="prevFiltered" :crypto-key="cryptoKey" />
+    <DailyReportPage v-if="tab === 'daily'" :payload="payload" :crypto-key="cryptoKey" />
     <CreativePage  v-if="tab === 'creative'" :crypto-key="cryptoKey" />
   </main>
 </template>
@@ -62,13 +64,14 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
 import DashboardPage from "./components/DashboardPage.vue";
 import ProductPage from "./components/ProductPage.vue";
+import DailyReportPage from "./components/DailyReportPage.vue";
 import CreativePage from "./components/CreativePage.vue";
 const payload = ref(null);
 const cryptoKey = shallowRef(null);
 const password = ref("");
 const unlocking = ref(false);
 const authError = ref("");
-const tab = ref(location.hash === "#/creative" ? "creative" : "dashboard");
+const tab = ref(tabFromHash());
 const startDate = ref("");
 const endDate = ref("");
 const category = ref("all");
@@ -142,10 +145,17 @@ function setQuickRange(days) {
 
 function selectTab(nextTab) {
   tab.value = nextTab;
-  history.replaceState(null, "", nextTab === "creative" ? "#/creative" : "#/");
+  const hashMap = { creative: "#/creative", product: "#/product", daily: "#/daily", dashboard: "#/" };
+  history.replaceState(null, "", hashMap[nextTab] || "#/");
 }
 function syncTabFromHash() {
-  tab.value = location.hash === "#/creative" ? "creative" : "dashboard";
+  tab.value = tabFromHash();
+}
+function tabFromHash() {
+  if (location.hash === "#/creative") return "creative";
+  if (location.hash === "#/product") return "product";
+  if (location.hash === "#/daily") return "daily";
+  return "dashboard";
 }
 function base64Bytes(value) {
   const binary = atob(value);

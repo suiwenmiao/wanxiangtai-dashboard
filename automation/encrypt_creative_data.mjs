@@ -3,7 +3,7 @@
 
 import { createCipheriv, pbkdf2Sync, randomBytes } from "node:crypto";
 import { gzipSync } from "node:zlib";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
@@ -48,14 +48,19 @@ function encrypt(payload) {
 }
 
 mkdirSync(publicDir, { recursive: true });
-for (const filename of ["creative-index.json", "creative-DT.json", "creative-手机.json", "creative-data.enc.json", "dashboard-data.enc.json", "product-details.enc.json"]) {
+for (const filename of ["creative-index.json", "creative-DT.json", "creative-手机.json", "creative-data.enc.json", "dashboard-data.enc.json", "product-details.enc.json", "mobile-audience-data.enc.json"]) {
   rmSync(join(publicDir, filename), { force: true });
 }
-for (const [filename, payload] of [
+const encryptedPayloads = [
   ["dashboard-data.enc.json", dashboard],
   ["product-details.enc.json", productDetails],
   ["creative-data.enc.json", { index, categories }],
-]) {
+];
+const mobileAudiencePath = join(privateDir, "mobile-audience-data.json");
+if (existsSync(mobileAudiencePath)) {
+  encryptedPayloads.push(["mobile-audience-data.enc.json", JSON.parse(readFileSync(mobileAudiencePath, "utf8"))]);
+}
+for (const [filename, payload] of encryptedPayloads) {
   const { envelope, plaintextBytes, compressedBytes } = encrypt(payload);
   const output = join(publicDir, filename);
   writeFileSync(output, JSON.stringify(envelope) + "\n", "utf8");

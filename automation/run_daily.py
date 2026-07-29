@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-每天上午7:30自动运行万相台报表下载
+每天上午7:40自动运行万相台报表下载
 使用方法：
   python3 automation/run_daily.py once
   python3 automation/run_daily.py loop
   或设置系统cron：
-  30 7 * * * cd /full/path && AUTO_DEPLOY=1 python3 automation/run_daily.py once >> /tmp/alimama_cron.log 2>&1
+  40 7 * * * cd /full/path && AUTO_DEPLOY=1 python3 automation/run_daily.py once >> /tmp/alimama_cron.log 2>&1
 """
 
 import os
@@ -28,7 +28,7 @@ CREATIVE_DEDUP_SCRIPT = SCRIPT_DIR / "dedupe_creative_images.py"
 DEPLOY_SCRIPT = SCRIPT_DIR / "deploy_static.py"
 LOG_FILE = DAILY_LOG_FILE
 RUN_HOUR = 7
-RUN_MINUTE = 30
+RUN_MINUTE = 40
 DOWNLOAD_TIMEOUT = int(os.environ.get("WORKBUDDY_DOWNLOAD_TIMEOUT", "1200"))
 CREATIVE_DOWNLOAD_TIMEOUT = int(os.environ.get("WORKBUDDY_CREATIVE_DOWNLOAD_TIMEOUT", "1200"))
 CREATIVE_DEDUP_TIMEOUT = int(os.environ.get("WORKBUDDY_CREATIVE_DEDUP_TIMEOUT", "600"))

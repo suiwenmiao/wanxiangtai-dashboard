@@ -9,7 +9,8 @@ from config import BIG_TABLE_PATH, FRONTEND_DATA_FILE, SHEET_NAME
 
 NUMERIC_COLS = [
     "花费", "总成交金额", "直接成交金额", "间接成交金额", "总成交笔数",
-    "点击量", "展现量", "总购物车数", "收藏宝贝数", "总收藏加购数",
+    "点击量", "展现量", "总购物车数", "总收藏数", "总收藏加购数",
+    "自然流量转化金额", "平台助推总成交", "补贴引导成交金额",
 ]
 
 
@@ -51,8 +52,9 @@ def build_records(df: pd.DataFrame) -> list[dict]:
     agg = df.groupby(["日期", "品类"], dropna=False).agg({
         "花费": "sum", "总成交金额": "sum", "直接成交金额": "sum",
         "间接成交金额": "sum", "总成交笔数": "sum", "点击量": "sum",
-        "展现量": "sum", "总购物车数": "sum", "收藏宝贝数": "sum",
-        "总收藏加购数": "sum",
+        "展现量": "sum", "总购物车数": "sum", "总收藏数": "sum",
+        "总收藏加购数": "sum", "自然流量转化金额": "sum",
+        "平台助推总成交": "sum", "补贴引导成交金额": "sum",
     }).reset_index().sort_values(["日期", "品类"])
     return [
         {
@@ -63,7 +65,10 @@ def build_records(df: pd.DataFrame) -> list[dict]:
             "indirectSales": round(float(r["间接成交金额"]), 2),
             "orders": int(r["总成交笔数"]), "clicks": int(r["点击量"]),
             "impressions": int(r["展现量"]), "carts": int(r["总购物车数"]),
-            "favorites": int(r["收藏宝贝数"]), "favCart": int(r["总收藏加购数"]),
+            "favorites": int(r["总收藏数"]), "favCart": int(r["总收藏加购数"]),
+            "naturalSales": round(float(r["自然流量转化金额"]), 2),
+            "platformSales": round(float(r["平台助推总成交"]), 2),
+            "subsidySales": round(float(r["补贴引导成交金额"]), 2),
         } for _, r in agg.iterrows()
     ]
 
@@ -151,6 +156,7 @@ def build_subject_date_records(df: pd.DataFrame) -> list[dict]:
         clicks=("点击量", "sum"),
         impressions=("展现量", "sum"),
         orders=("总成交笔数", "sum"),
+        carts=("总购物车数", "sum"),
     )
     result = []
     for _, r in groups.iterrows():
@@ -165,6 +171,7 @@ def build_subject_date_records(df: pd.DataFrame) -> list[dict]:
             "clicks": int(r["clicks"]),
             "impressions": int(r["impressions"]),
             "orders": int(r["orders"]),
+            "carts": int(r["carts"]),
         })
     return result
 
@@ -201,6 +208,7 @@ def build_subject_plan_records(df: pd.DataFrame) -> list[dict]:
         clicks=("点击量", "sum"),
         impressions=("展现量", "sum"),
         orders=("总成交笔数", "sum"),
+        carts=("总购物车数", "sum"),
     )
     result = []
     for _, r in groups.iterrows():
@@ -219,6 +227,7 @@ def build_subject_plan_records(df: pd.DataFrame) -> list[dict]:
             "clicks": int(r["clicks"]),
             "impressions": int(r["impressions"]),
             "orders": int(r["orders"]),
+            "carts": int(r["carts"]),
         })
     return result
 

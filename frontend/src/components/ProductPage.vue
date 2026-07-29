@@ -11,9 +11,26 @@
 
     <!-- Actionable Summary -->
     <div class="summary-box">
-      <div class="chart-title">推广诊断与优化建议</div>
+      <div class="chart-title">推广诊断与优化建议（近 7 日滚动）</div>
       <div v-for="(line, i) in summaryLines" :key="i" class="summary-line" v-html="line"></div>
     </div>
+
+    <section class="plan-action-board" aria-label="计划行动看板">
+      <div class="chart-title">计划行动看板（近 7 日滚动）</div>
+      <div v-if="planDataLoading" class="plan-action-loading">正在汇总计划表现...</div>
+      <div v-else-if="planDataError" class="plan-action-loading">{{ planDataError }}</div>
+      <div v-else class="plan-action-grid">
+        <div v-for="group in planActionGroups" :key="group.key" :class="['plan-action-group', group.tone]">
+          <div class="plan-action-group-head"><span>{{ group.title }}</span><strong>{{ group.items.length }} 个</strong></div>
+          <button v-for="item in group.items.slice(0, 5)" :key="item.key" class="plan-action-item" type="button" @click="openPlanAction(item)" :title="item.advice.reason">
+            <span class="plan-action-name">{{ item.subjectId }} · {{ item.planName }}</span>
+            <span class="plan-action-metrics">ROI {{ item.roi.toFixed(2) }} · ¥{{ formatMoney(item.cost) }}</span>
+          </button>
+          <div v-if="group.items.length > 5" class="plan-action-more">另有 {{ group.items.length - 5 }} 个计划，请在下方主体明细查看</div>
+          <div v-if="group.items.length === 0" class="plan-action-empty">暂无计划</div>
+        </div>
+      </div>
+    </section>
 
     <!-- Channel Summary -->
     <div class="panel-table">
@@ -63,11 +80,13 @@
           <th class="num">CPC</th>
           <th class="num">点击率</th>
           <th class="num">转化率</th>
+          <th class="num">加购率</th>
           <th class="num sortable" @click="toggleSort('totalRoi')">ROI<span :class="['sort-arrow',{active:sortField==='totalRoi'}]">{{ sortArrow('totalRoi') }}</span></th>
+          <th>AI 建议（近 7 日）</th>
         </tr></thead>
         <tbody>
           <template v-for="s in displaySubjects" :key="s.subjectId">
-            <tr :class="roiRowClass(s)">
+            <tr :id="subjectRowId(s.subjectId)" :class="roiRowClass(s)">
               <td class="subject-click" @click="toggleDetail(s.subjectId)">{{ s.subjectId }}</td>
               <td>{{ truncateName(s.subjectName) }}</td>
               <td>{{ s.subCategory }}</td>
@@ -79,10 +98,12 @@
               <td class="num">¥{{ s.clicks > 0 ? (s.cost / s.clicks).toFixed(2) : '0.00' }}</td>
               <td class="num">{{ formatPercent(s.impressions > 0 ? s.clicks / s.impressions : 0) }}</td>
               <td class="num">{{ formatPercent(s.clicks > 0 ? s.orders / s.clicks : 0) }}</td>
+              <td class="num">{{ formatPercent(s.clicks > 0 ? s.carts / s.clicks : 0) }}</td>
               <td :class="['num', roiClass(s.totalRoi)]">{{ s.totalRoi.toFixed(2) }}</td>
+              <td><span :class="['plan-advice', subjectAdvice(s).tone]" :title="subjectAdvice(s).reason">{{ subjectAdvice(s).label }}</span></td>
             </tr>
             <tr v-if="expandedId === s.subjectId" :key="'detail-'+s.subjectId">
-              <td colspan="12" style="padding:0">
+              <td colspan="14" style="padding:0">
                 <div class="subj-inline-detail">
                   <div v-if="planDataLoading" class="empty">正在加载计划明细...</div>
                   <div v-else-if="planDataError" class="empty">{{ planDataError }}</div>
@@ -90,16 +111,18 @@
                     <div v-for="group in getScenarioGroups(s)" :key="group.scenario" class="scenario-block">
                       <div class="scenario-header"><span>推广场景：{{ group.scenario }}</span><span class="summary">花费 ¥{{ formatMoney(group.cost) }} · 成交 ¥{{ formatMoney(group.totalSales) }} · ROI {{ group.roi.toFixed(2) }}</span></div>
                       <div class="table-wrap"><table>
-                        <thead><tr><th>计划名称</th><th class="num">花费</th><th class="num">总成交金额</th><th class="num">ROI</th><th class="num">点击率</th><th class="num">转化率</th><th class="num">CPC</th></tr></thead>
+                        <thead><tr><th>计划名称</th><th class="num">花费</th><th class="num">总成交金额</th><th class="num">ROI</th><th class="num">点击率</th><th class="num">转化率</th><th class="num">加购率</th><th class="num">CPC</th><th>AI 建议（近 7 日）</th></tr></thead>
                         <tbody>
-                          <tr v-for="(p, i) in group.plans" :key="i">
+                          <tr v-for="(p, i) in group.plans" :key="i" :class="{ 'plan-focus': p.planId === activePlanId }">
                             <td>{{ p.planName }}</td>
                             <td class="num">¥{{ formatMoney(p.cost) }}</td>
                             <td class="num">¥{{ formatMoney(p.totalSales) }}</td>
                             <td :class="['num', roiClass(p.totalRoi)]">{{ p.totalRoi.toFixed(2) }}</td>
                             <td class="num">{{ formatPercent(p.impressions > 0 ? p.clicks / p.impressions : 0) }}</td>
                             <td class="num">{{ formatPercent(p.clicks > 0 ? p.orders / p.clicks : 0) }}</td>
+                            <td class="num">{{ formatPercent(p.clicks > 0 ? p.carts / p.clicks : 0) }}</td>
                             <td class="num">¥{{ p.clicks > 0 ? (p.cost / p.clicks).toFixed(2) : '0.00' }}</td>
+                            <td><span :class="['plan-advice', p.advice.tone]" :title="p.advice.reason">{{ p.advice.label }}</span></td>
                           </tr>
                         </tbody>
                       </table></div>
@@ -109,7 +132,7 @@
               </td>
             </tr>
           </template>
-          <tr v-if="displaySubjects.length === 0"><td colspan="12" class="empty">暂无数据</td></tr>
+          <tr v-if="displaySubjects.length === 0"><td colspan="14" class="empty">暂无数据</td></tr>
         </tbody>
       </table></div>
     </div>
@@ -117,7 +140,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import { formatMoney, formatPercent, sumMetrics } from "../utils/metrics";
 
 const props = defineProps({ payload: { type: Object, required: true }, filtered: { type: Array, required: true }, prevFiltered: { type: Array, default: [] }, cryptoKey: { type: CryptoKey, required: true } });
@@ -125,8 +148,59 @@ const expandedId = ref(null);
 const planRecords = ref(null);
 const planDataLoading = ref(false);
 const planDataError = ref("");
+const activePlanId = ref(null);
 const sortField = ref('cost');
 const sortDir = ref('desc');
+const selectedDates = computed(() => new Set(props.filtered.map(r => r.date)));
+const subjectMeta = computed(() => new Map(props.payload.subjects.map(subject => [String(subject.subjectId), subject])));
+
+const planBenchmarks = computed(() => {
+  const sums = new Map();
+  for (const row of planRecords.value || []) {
+    if (!adviceWindows.value.current.has(row.date)) continue;
+    const subject = subjectMeta.value.get(String(row.subjectId));
+    if (!subject) continue;
+    const key = `${subject.category}|${row.scenario || '未分类'}`;
+    const value = sums.get(key) || emptyMetric();
+    addMetric(value, row); value.days.add(row.date);
+    sums.set(key, value);
+  }
+  return sums;
+});
+
+const planActionGroups = computed(() => {
+  const categories = new Set(props.filtered.map(row => row.category));
+  const current = new Map();
+  const previous = new Map();
+  const metadata = new Map();
+  for (const row of planRecords.value || []) {
+    const subject = subjectMeta.value.get(String(row.subjectId));
+    if (!subject || (categories.size && !categories.has(subject.category))) continue;
+    const key = `${row.subjectId}|${row.planId}`;
+    metadata.set(key, { subjectId: row.subjectId, planId: row.planId, planName: row.planName, scenario: row.scenario || '未分类', category: subject.category });
+    const target = adviceWindows.value.current.has(row.date) ? current : adviceWindows.value.previous.has(row.date) ? previous : null;
+    if (!target) continue;
+    const metric = target.get(key) || emptyMetric();
+    addMetric(metric, row); metric.days.add(row.date);
+    target.set(key, metric);
+  }
+  const groups = {
+    urgent: { key: 'urgent', title: '急需调整', tone: 'urgent', items: [] },
+    optimize: { key: 'optimize', title: '重点优化', tone: 'optimize', items: [] },
+    grow: { key: 'grow', title: '优质可加投', tone: 'grow', items: [] },
+    observe: { key: 'observe', title: '维持观察', tone: 'observe', items: [] },
+  };
+  for (const [key, info] of metadata) {
+    const now = current.get(key) || emptyMetric();
+    if (!now.days.size) continue;
+    const benchmark = planBenchmarks.value.get(`${info.category}|${info.scenario}`) || emptyMetric();
+    const advice = planAdvice(now, previous.get(key) || emptyMetric(), benchmark);
+    const bucket = advice.tone === 'stop' || advice.tone === 'reduce' ? 'urgent' : advice.tone === 'optimize' ? 'optimize' : advice.tone === 'grow' ? 'grow' : 'observe';
+    groups[bucket].items.push({ ...info, key, advice, cost: now.cost, roi: metricRoi(now) });
+  }
+  for (const group of Object.values(groups)) group.items.sort((a, b) => b.cost - a.cost);
+  return Object.values(groups);
+});
 
 const kpi = computed(() => { const t = sumMetrics(props.filtered); const cpc = t.clicks > 0 ? t.cost / t.clicks : 0; return { cost: t.cost, totalSales: t.totalSales, totalRoi: t.totalRoi, clicks: t.clicks, cvr: t.cvr, cpc }; });
 const prevKpi = computed(() => { if (!props.prevFiltered.length) return null; const t = sumMetrics(props.prevFiltered); const cpc = t.clicks > 0 ? t.cost / t.clicks : 0; return { cost: t.cost, totalSales: t.totalSales, totalRoi: t.totalRoi, clicks: t.clicks, cvr: t.cvr, cpc }; });
@@ -198,6 +272,7 @@ const displaySubjects = computed(() => {
   // Compute from date-filtered records + subjectDateRecords
   const dates = new Set(props.filtered.map(r => r.date));
   const cats = new Set(props.filtered.map(r => r.category));
+  const isDtOnly = cats.size === 1 && cats.has("DT");
   const allCats = cats.size >= props.payload.categories.length;
   const isFullRange = dates.size >= props.payload.records.length;
 
@@ -209,9 +284,9 @@ const displaySubjects = computed(() => {
   if (isFullRange || dates.size === 0 || !props.payload.subjectDateRecords) {
     let result = props.payload.subjects;
     if (!allCats && cats.size > 0) result = result.filter(s => cats.has(s.category));
-    return result.map(s => ({ ...s, totalRoi: s.cost > 0 ? s.totalSales / s.cost : 0 }))
-      .sort((a, b) => { const mul = sortDir.value==='desc'?-1:1; const va=a[sortField.value],vb=b[sortField.value]; return typeof va==='string'?(va||'').localeCompare(vb||'')*mul:((va||0)-(vb||0))*mul; })
-      .slice(0, 100);
+    const sorted = result.map(s => ({ ...s, totalRoi: s.cost > 0 ? s.totalSales / s.cost : 0 }))
+      .sort((a, b) => { const mul = sortDir.value==='desc'?-1:1; const va=a[sortField.value],vb=b[sortField.value]; return typeof va==='string'?(va||'').localeCompare(vb||'')*mul:((va||0)-(vb||0))*mul; });
+    return isDtOnly ? sorted.slice(0, 10) : sorted;
   }
 
   // Filter subjectDateRecords by selected dates
@@ -219,39 +294,63 @@ const displaySubjects = computed(() => {
   // Aggregate by subjectId
   const agg = {};
   for (const r of sdr) {
-    if (!agg[r.subjectId]) agg[r.subjectId] = { cost:0, totalSales:0, clicks:0, impressions:0, orders:0 };
-    const a = agg[r.subjectId]; a.cost += r.cost; a.totalSales += r.totalSales; a.clicks += r.clicks; a.impressions += r.impressions; a.orders += r.orders;
+    if (!agg[r.subjectId]) agg[r.subjectId] = { cost:0, totalSales:0, clicks:0, impressions:0, orders:0, carts:0 };
+    const a = agg[r.subjectId]; a.cost += r.cost; a.totalSales += r.totalSales; a.clicks += r.clicks; a.impressions += r.impressions; a.orders += r.orders; a.carts += r.carts || 0;
   }
   // Build result with metadata, filter by category
   let result = Object.entries(agg).map(([sid, m]) => {
     const meta = metaMap[sid]; if (!meta) return null;
     if (!allCats && cats.size > 0 && !cats.has(meta.category)) return null;
-    return { ...meta, cost:Math.round(m.cost*100)/100, totalSales:Math.round(m.totalSales*100)/100, clicks:m.clicks, impressions:m.impressions, orders:m.orders || 0, totalRoi:m.cost>0?m.totalSales/m.cost:0 };
+    return { ...meta, cost:Math.round(m.cost*100)/100, totalSales:Math.round(m.totalSales*100)/100, clicks:m.clicks, impressions:m.impressions, orders:m.orders || 0, carts:m.carts || 0, totalRoi:m.cost>0?m.totalSales/m.cost:0 };
   }).filter(Boolean);
 
-  return result.sort((a, b) => { const mul=sortDir.value==='desc'?-1:1; const va=a[sortField.value],vb=b[sortField.value]; return typeof va==='string'?(va||'').localeCompare(vb||'')*mul:((va||0)-(vb||0))*mul; }).slice(0, 100);
+  const sorted = result.sort((a, b) => { const mul=sortDir.value==='desc'?-1:1; const va=a[sortField.value],vb=b[sortField.value]; return typeof va==='string'?(va||'').localeCompare(vb||'')*mul:((va||0)-(vb||0))*mul; });
+  return isDtOnly ? sorted.slice(0, 10) : sorted;
 });
 
-// Category-specific ROI thresholds per industry experience
-const THRESHOLDS = {
-  'DT':  { good: 61, ok: 31, warn: 12 },   // 台式机: P50/P25/P10 历史数据
-  'NB':  { good: 57, ok: 28, warn: 11 },   // 笔记本: 同级别
-  '手机': { good: 10, ok: 3, warn: 1.5 },  // 手机: 整体ROI 15.81
-  '平板': { good: 30, ok: 15, warn: 3 },   // 平板: 整体ROI 37.84
-  '显示器': { good: 19, ok: 10, warn: 3 },  // 显示器: 整体ROI 32.07
-  '服务': { good: 4, ok: 3, warn: 1.8 },   // 服务: 整体ROI 6.61，低客单高频
-  '选件': { good: 19, ok: 9, warn: 3 },    // 选件: 整体ROI 22.64
-  'IP':  { good: 6, ok: 2, warn: 0.8 },    // 平板配件: 整体ROI 9.79
-  'SIOT': { good: 6, ok: 2, warn: 0.8 },
-  '其他': { good: 6, ok: 2, warn: 0.8 },
-};
-function getT(cat) { return THRESHOLDS[cat] || THRESHOLDS['其他']; }
+const adviceWindows = computed(() => {
+  const end = [...selectedDates.value].sort().at(-1);
+  if (!end) return { current: new Set(), previous: new Set() };
+  return { current: dateWindow(end, 7, 0), previous: dateWindow(end, 7, 7) };
+});
 
-// Actionable summary with category-specific thresholds
+const subjectAdviceWindows = computed(() => {
+  const map = new Map();
+  for (const row of props.payload.subjectDateRecords || []) {
+    const period = adviceWindows.value.current.has(row.date) ? "current" : adviceWindows.value.previous.has(row.date) ? "previous" : null;
+    if (!period) continue;
+    const entry = map.get(String(row.subjectId)) || { current: emptyMetric(), previous: emptyMetric() };
+    addMetric(entry[period], row);
+    entry[period].days.add(row.date);
+    map.set(String(row.subjectId), entry);
+  }
+  return map;
+});
+
+const subjectBenchmarks = computed(() => {
+  const sums = new Map();
+  for (const [subjectId, window] of subjectAdviceWindows.value) {
+    const subject = subjectMeta.value.get(subjectId);
+    if (!subject) continue;
+    const value = sums.get(subject.category) || emptyMetric();
+    mergeMetric(value, window.current);
+    sums.set(subject.category, value);
+  }
+  return sums;
+});
+
+function subjectAdvice(subject) {
+  const window = subjectAdviceWindows.value.get(String(subject.subjectId));
+  const current = window?.current || emptyMetric();
+  const previous = window?.previous || emptyMetric();
+  const benchmark = subjectBenchmarks.value.get(subject.category) || emptyMetric();
+  return recommendation(current, previous, benchmark, "品类");
+}
+
+// Actionable summary: all budget actions use the rolling 7-day evaluator.
 const summaryLines = computed(() => {
   const rows = displaySubjects.value; const t = kpi.value; const p = prevKpi.value;
   const lines = []; if (rows.length === 0) { lines.push('当前筛选条件下暂无数据'); return lines; }
-
   let hbStr = '';
   if (p) {
     const h = hb.value;
@@ -261,43 +360,37 @@ const summaryLines = computed(() => {
   }
   lines.push(`📊 总花费 <strong>¥${formatMoney(t.cost)}</strong>，总成交 <strong>¥${formatMoney(t.totalSales)}</strong>，整体 ROI <span class="highlight-blue">${t.totalRoi.toFixed(2)}</span> ${hbStr}`);
 
-  // Categorize subjects by category-specific thresholds
+  // All action recommendations use the rolling 7-day evaluator, not one-day values.
   const crit = [], lowEff = [], goodList = [];
   for (const s of rows) {
-    if (s.cost < 200) continue;
-    const thr = getT(s.category);
-    if (s.totalRoi >= thr.good) goodList.push(s);
-    else if (s.totalRoi >= thr.ok) { /* normal - no action needed */ }
-    else if (s.totalRoi >= thr.warn) lowEff.push(s);
-    else crit.push(s);
+    const advice = subjectAdvice(s);
+    if (advice.tone === 'grow') goodList.push({ ...s, advice });
+    else if (advice.tone === 'reduce' || advice.tone === 'stop') crit.push({ ...s, advice });
+    else if (advice.tone === 'optimize') lowEff.push({ ...s, advice });
   }
 
   // 🔴 Critical: below warn threshold
   if (crit.length > 0) {
-    lines.push(`<br><b>🔴 需紧急处理（ROI 低于品类警戒线，共 ${crit.length} 条）</b>`);
+    lines.push(`<br><b>🔴 近7日建议减投/暂停（共 ${crit.length} 条）</b>`);
     crit.sort((a,b) => b.cost - a.cost).slice(0, 6).forEach(s => {
-      const thr = getT(s.category);
-      lines.push(`&nbsp;&nbsp;• <strong>${s.subjectId}</strong>（${s.category}）花费 ¥${formatMoney(s.cost)}，ROI <span class="highlight-red">${s.totalRoi.toFixed(2)}</span>（品类警戒线 ${thr.warn}）`);
-      if (s.totalRoi < thr.warn * 0.4) lines.push(`&nbsp;&nbsp;&nbsp;&nbsp;→ <b>建议立即暂停</b>，严重低于品类标准`);
-      else if (s.totalRoi < thr.warn * 0.7) lines.push(`&nbsp;&nbsp;&nbsp;&nbsp;→ <b>建议暂停或大幅降价</b>，优化人群与关键词`);
-      else lines.push(`&nbsp;&nbsp;&nbsp;&nbsp;→ 建议<b>降低预算</b>，检查转化及素材质量`);
+      const cpc = s.clicks ? s.cost / s.clicks : 0; const cartRate = s.clicks ? (s.carts || 0) / s.clicks : 0;
+      lines.push(`&nbsp;&nbsp;• <strong>${s.subjectId}</strong>（${s.category}）ROI <span class="highlight-red">${s.totalRoi.toFixed(2)}</span>，CPC ¥${cpc.toFixed(2)}，加购率 ${formatPercent(cartRate)} → <b>${s.advice.label}</b>：${s.advice.reason}`);
     });
   }
 
   // 🟡 Low efficiency: below ok line, above warn
   if (lowEff.length > 0) {
-    lines.push(`<br><b>🟡 效率偏低需关注（ROI 低于品类及格线，共 ${lowEff.length} 条）</b>`);
+    lines.push(`<br><b>🟡 近7日需要优化（共 ${lowEff.length} 条）</b>`);
     lowEff.sort((a,b) => b.cost - a.cost).slice(0, 6).forEach(s => {
-      const thr = getT(s.category);
-      lines.push(`&nbsp;&nbsp;• <strong>${s.subjectId}</strong>（${s.category}）ROI <span style="color:#e67e22">${s.totalRoi.toFixed(2)}</span>，品类及格线 ${thr.ok}，花费 ¥${formatMoney(s.cost)} → 建议<b>优化出价和定向</b>，观察 3-5 天无改善则降低预算`);
+      lines.push(`&nbsp;&nbsp;• <strong>${s.subjectId}</strong>（${s.category}）→ <b>${s.advice.label}</b>：${s.advice.reason}`);
     });
   }
 
   // 🟢 Good performers
   if (goodList.length > 0) {
-    lines.push(`<br><b>🟢 表现优异可加量主体（ROI 高于品类优秀线，共 ${goodList.length} 条）</b>`);
+    lines.push(`<br><b>🟢 近7日优质主体，可分步加投（共 ${goodList.length} 条）</b>`);
     goodList.sort((a,b) => b.totalRoi - a.totalRoi).slice(0, 4).forEach(s => {
-      lines.push(`&nbsp;&nbsp;• <strong>${s.subjectId}</strong>（${s.category}）ROI <span class="highlight-green">${s.totalRoi.toFixed(2)}</span>，花费 ¥${formatMoney(s.cost)} → 建议<b>保持策略，可增加 20-30% 预算</b>`);
+      lines.push(`&nbsp;&nbsp;• <strong>${s.subjectId}</strong>（${s.category}）→ <b>${s.advice.label}</b>：${s.advice.reason}`);
     });
   }
 
@@ -323,19 +416,15 @@ function roiRowClass(s) { return s.totalRoi < 0.5 ? 'row-danger' : s.totalRoi >=
 function roiClass(v) { return v >= 3 ? "roi-good" : v < 1 ? "roi-risk" : ""; }
 
 function getScenarioGroups(subject) {
-  // Filter subjectPlanRecords by subjectId and selected dates
-  const dates = new Set(props.filtered.map(r => r.date));
-  const allDates = dates.size >= props.payload.records.length;
-  let records = (planRecords.value || []).filter(r => r.subjectId === subject.subjectId);
-  if (!allDates && dates.size > 0) {
-    records = records.filter(r => dates.has(r.date));
-  }
+  const subjectRecords = (planRecords.value || []).filter(r => r.subjectId === subject.subjectId);
+  const records = selectedDates.value.size ? subjectRecords.filter(r => selectedDates.value.has(r.date)) : subjectRecords;
+  const adviceCurrentPlans = aggregatePlanWindow(subjectRecords, adviceWindows.value.current);
+  const advicePreviousPlans = aggregatePlanWindow(subjectRecords, adviceWindows.value.previous);
   if (records.length === 0) return [];
-  // Aggregate by planId (unique across scenarios)
   const planMap = {};
   for (const r of records) {
     if (!planMap[r.planId]) {
-      planMap[r.planId] = { scenario: r.scenario, planName: r.planName, cost: 0, totalSales: 0, clicks: 0, impressions: 0, orders: 0 };
+      planMap[r.planId] = { scenario: r.scenario, planName: r.planName, cost: 0, totalSales: 0, clicks: 0, impressions: 0, orders: 0, carts: 0 };
     }
     const p = planMap[r.planId];
     p.cost += r.cost;
@@ -343,22 +432,26 @@ function getScenarioGroups(subject) {
     p.clicks += r.clicks;
     p.impressions += r.impressions;
     p.orders += r.orders;
+    p.carts += r.carts || 0;
   }
   // Group by scenario
   const groups = {};
-  for (const plan of Object.values(planMap)) {
+  for (const [planId, plan] of Object.entries(planMap)) {
     if (!groups[plan.scenario]) {
       groups[plan.scenario] = { scenario: plan.scenario, plans: [], cost: 0, totalSales: 0, clicks: 0, impressions: 0 };
     }
     const g = groups[plan.scenario];
     const pd = {
-      scenario: plan.scenario, planName: plan.planName,
+      planId, scenario: plan.scenario, planName: plan.planName,
       cost: Math.round(plan.cost * 100) / 100,
       totalSales: Math.round(plan.totalSales * 100) / 100,
       clicks: Math.round(plan.clicks), impressions: Math.round(plan.impressions),
       orders: Math.round(plan.orders),
+      carts: Math.round(plan.carts),
       totalRoi: plan.cost > 0 ? plan.totalSales / plan.cost : 0,
     };
+    const benchmark = planBenchmarks.value.get(`${subject.category}|${plan.scenario}`);
+    pd.advice = planAdvice(adviceCurrentPlans.get(planId) || emptyMetric(), advicePreviousPlans.get(planId) || emptyMetric(), benchmark);
     g.plans.push(pd);
     g.cost += pd.cost; g.totalSales += pd.totalSales; g.clicks += pd.clicks; g.impressions += pd.impressions;
   }
@@ -368,6 +461,43 @@ function getScenarioGroups(subject) {
     roi: g.cost > 0 ? g.totalSales / g.cost : 0,
   }));
 }
+
+function planAdvice(current, previous, benchmark) { return recommendation(current, previous, benchmark, "同场景"); }
+
+function recommendation(current, previous, benchmark, scope) {
+  const roi = metricRoi(current), cpc = metricCpc(current), cvr = metricCvr(current), cartRate = metricCartRate(current);
+  const refRoi = metricRoi(benchmark), refCpc = metricCpc(benchmark), refCvr = metricCvr(benchmark), refCartRate = metricCartRate(benchmark);
+  const previousRoi = metricRoi(previous);
+  const enoughSample = current.days.size >= 4 && current.cost >= 500 && current.clicks >= 100;
+  const trendDown = previous.cost >= 300 && previousRoi > 0 && roi < previousRoi * 0.8;
+  const trendUp = previous.cost >= 300 && previousRoi > 0 && roi >= previousRoi * 0.9;
+  const sampleText = `近7日投放 ${current.days.size} 天、花费 ¥${formatMoney(current.cost)}、点击 ${Math.round(current.clicks).toLocaleString()}`;
+
+  if (!enoughSample) return { label: "观察样本", tone: "neutral", reason: `${sampleText}，未达到连续 4 天、¥500、100 点击的预算动作门槛。` };
+  if (current.orders === 0 && current.clicks >= 100 && refCartRate > 0 && cartRate < refCartRate * 0.6) {
+    return { label: "建议暂停/换素材", tone: "stop", reason: `${sampleText}；有点击无成交且加购率显著低于${scope}均值。` };
+  }
+  if (refRoi > 0 && roi >= refRoi * 1.15 && (!refCpc || cpc <= refCpc * 1.1) && (!refCartRate || cartRate >= refCartRate * 0.9) && (!previous.cost || trendUp)) {
+    return { label: "建议加投", tone: "grow", reason: `${sampleText}；ROI、CPC、加购率均优于${scope}均值，且较前7日未走弱，可分步上调 10-20%。` };
+  }
+  if (refRoi > 0 && roi < refRoi * 0.65 && current.cost >= 800 && (trendDown || (previous.cost >= 300 && previousRoi < refRoi * 0.7))) {
+    return { label: "建议减投", tone: "reduce", reason: `${sampleText}；ROI连续两个周期偏弱或较前7日明显回落，建议先收缩预算。` };
+  }
+  if (refCpc > 0 && cpc > refCpc * 1.2 && roi < refRoi) return { label: "优化 CPC", tone: "optimize", reason: `${sampleText}；CPC高于${scope}均值，先优化出价、关键词或人群。` };
+  if (refCvr > 0 && cvr < refCvr * 0.7) return { label: "优化转化", tone: "optimize", reason: `${sampleText}；CVR低于${scope}均值，检查素材、权益和商品承接。` };
+  return { label: "维持观察", tone: "neutral", reason: `${sampleText}；近7日表现接近${scope}均值，继续观察下一周期。` };
+}
+
+function dateWindow(end, days, offset) { return new Set(Array.from({ length: days }, (_, index) => addDays(end, -(offset + index)))); }
+function addDays(date, days) { const [year, month, day] = date.split("-").map(Number); return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10); }
+function emptyMetric() { return { cost: 0, totalSales: 0, clicks: 0, impressions: 0, orders: 0, carts: 0, days: new Set() }; }
+function addMetric(target, row) { target.cost += row.cost || 0; target.totalSales += row.totalSales || 0; target.clicks += row.clicks || 0; target.impressions += row.impressions || 0; target.orders += row.orders || 0; target.carts += row.carts || 0; }
+function mergeMetric(target, source) { target.cost += source.cost; target.totalSales += source.totalSales; target.clicks += source.clicks; target.impressions += source.impressions; target.orders += source.orders; target.carts += source.carts; for (const day of source.days) target.days.add(day); }
+function aggregatePlanWindow(records, dates) { const map = new Map(); for (const row of records) { if (!dates.has(row.date)) continue; const value = map.get(row.planId) || emptyMetric(); addMetric(value, row); value.days.add(row.date); map.set(row.planId, value); } return map; }
+function metricRoi(value) { return value.cost ? value.totalSales / value.cost : 0; }
+function metricCpc(value) { return value.clicks ? value.cost / value.clicks : 0; }
+function metricCvr(value) { return value.clicks ? value.orders / value.clicks : 0; }
+function metricCartRate(value) { return value.clicks ? value.carts / value.clicks : 0; }
 
 function base64Bytes(value) {
   const binary = atob(value);
@@ -403,4 +533,12 @@ function toggleDetail(id) {
   expandedId.value = expandedId.value === id ? null : id;
   if (expandedId.value) loadPlanRecords();
 }
+function subjectRowId(id) { return `subject-${id}`; }
+function openPlanAction(item) {
+  activePlanId.value = item.planId;
+  expandedId.value = item.subjectId;
+  loadPlanRecords();
+  nextTick(() => document.getElementById(subjectRowId(item.subjectId))?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+}
+onMounted(loadPlanRecords);
 </script>
