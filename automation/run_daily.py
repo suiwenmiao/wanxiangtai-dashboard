@@ -26,6 +26,7 @@ CREATIVE_MERGE_SCRIPT = SCRIPT_DIR / "merge_creative_reports.py"
 CREATIVE_DATA_SCRIPT = SCRIPT_DIR / "generate_creative_data.py"
 CREATIVE_DEDUP_SCRIPT = SCRIPT_DIR / "dedupe_creative_images.py"
 DEPLOY_SCRIPT = SCRIPT_DIR / "deploy_static.py"
+FEISHU_REPORT_SCRIPT = SCRIPT_DIR / "feishu_daily_report.py"
 LOG_FILE = DAILY_LOG_FILE
 RUN_HOUR = 7
 RUN_MINUTE = 40
@@ -197,6 +198,32 @@ def run_deploy():
         return False
 
 
+def run_feishu_report(report_date: str) -> bool:
+    """Render the three category reports and send them after a successful deploy."""
+    if os.environ.get("FEISHU_ENABLED", "0") != "1":
+        log("FEISHU_ENABLED 未开启，跳过飞书日报发送。")
+        return True
+    try:
+        result = subprocess.run(
+            [PYTHON, str(FEISHU_REPORT_SCRIPT), "all", "--date", report_date],
+            cwd=SCRIPT_DIR,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        log(f"飞书日报发送退出码: {result.returncode}")
+        if result.stdout:
+            for line in result.stdout.strip().split("\n")[-10:]:
+                log(f"  [feishu stdout] {line}")
+        if result.stderr:
+            for line in result.stderr.strip().split("\n")[-10:]:
+                log(f"  [feishu stderr] {line}")
+        return result.returncode == 0
+    except Exception as exc:
+        log(f"[WARN] 飞书日报发送失败: {exc}")
+        return False
+
+
 def seconds_until_next_run():
     """计算距离下次自动运行时间还有多少秒"""
     now = datetime.now()
@@ -242,6 +269,7 @@ def run_once() -> bool:
     if not deploy_ok:
         log("部署失败。")
         return False
+    run_feishu_report(report_date)
     return True
 
 
