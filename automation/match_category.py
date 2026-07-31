@@ -53,6 +53,12 @@ print(f"  报表列数: {len(df_report.columns)}")
 df_base["主体ID"] = pd.to_numeric(df_base["主体ID"], errors="coerce").astype("Int64")
 df_report["主体ID"] = pd.to_numeric(df_report["主体ID"], errors="coerce").astype("Int64")
 
+# 兼容匹配表使用“商品ID”或“主体ID”的历史格式
+base_id_column = "主体ID" if "主体ID" in df_base.columns else "商品ID" if "商品ID" in df_base.columns else None
+if base_id_column is None:
+    raise SystemExit("[ERROR] 匹配表缺少主体ID或商品ID字段")
+df_base = df_base.rename(columns={base_id_column: "主体ID"})
+
 # 去除基础表中的重复主体ID（保留第一条）
 df_base_clean = df_base.drop_duplicates(subset=["主体ID"], keep="first")
 print(f"\n基础表去重后行数: {len(df_base_clean)}")

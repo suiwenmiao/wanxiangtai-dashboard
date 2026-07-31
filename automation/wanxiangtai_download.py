@@ -1643,7 +1643,10 @@ def append_to_big_table(csv_path, report_date_str):
     # 2. 读取基础表（匹配品类/细类）
     try:
         df_base = pd.read_excel(BASE_TABLE_PATH)
-        mapping = df_base[["主体ID", "品类", "细类"]].copy()
+        base_id_column = "主体ID" if "主体ID" in df_base.columns else "商品ID" if "商品ID" in df_base.columns else None
+        if base_id_column is None:
+            raise KeyError("匹配表缺少主体ID或商品ID字段")
+        mapping = df_base[[base_id_column, "品类", "细类"]].rename(columns={base_id_column: "主体ID"}).copy()
         mapping["主体ID"] = pd.to_numeric(mapping["主体ID"], errors="coerce").astype("Int64")
         mapping = mapping.dropna(subset=["主体ID"]).drop_duplicates(subset="主体ID")
         log(f"基础表: {len(mapping)} 条映射")
