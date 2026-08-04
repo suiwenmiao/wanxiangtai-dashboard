@@ -8,8 +8,6 @@ import shutil
 from datetime import datetime
 
 import pandas as pd
-from openpyxl import load_workbook
-
 from config import BASE_TABLE_PATH, BIG_TABLE_PATH, SHEET_NAME
 
 
@@ -45,15 +43,16 @@ def main() -> None:
     backup = BIG_TABLE_PATH.with_name(f"{BIG_TABLE_PATH.stem}.匹配前备份_{datetime.now().strftime('%Y%m%d_%H%M%S')}{BIG_TABLE_PATH.suffix}")
     shutil.copy2(BIG_TABLE_PATH, backup)
 
-    workbook = load_workbook(BIG_TABLE_PATH)
-    if SHEET_NAME not in workbook.sheetnames:
-        raise SystemExit(f"大表中不存在工作表: {SHEET_NAME}")
-    worksheet = workbook[SHEET_NAME]
-    worksheet.delete_rows(1, worksheet.max_row)
-    worksheet.append(list(table.columns))
-    for row in table.itertuples(index=False, name=None):
-        worksheet.append(list(row))
-    workbook.save(BIG_TABLE_PATH)
+    # 先写入临时文件并回读校验，避免大表写入失败后留下不完整的 Excel。
+    temporary = BIG_TABLE_PATH.with_name(f"{BIG_TABLE_PATH.stem}.重匹配临时{BIG_TABLE_PATH.suffix}")
+    if temporary.exists():
+        temporary.unlink()
+    table.to_excel(temporary, sheet_name=SHEET_NAME, index=False, engine="openpyxl")
+    check = pd.read_excel(temporary, sheet_name=SHEET_NAME)
+    if len(check) != len(table) or list(check.columns) != list(table.columns):
+        temporary.unlink(missing_ok=True)
+        raise SystemExit(f"临时文件校验失败: 写入 {len(check)} 行，预期 {len(table)} 行")
+    shutil.move(temporary, BIG_TABLE_PATH)
 
     matched = int((table["品类"] != "其他").sum())
     changed = 0
