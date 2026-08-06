@@ -83,13 +83,19 @@ def load_creatives(start_date: str, end_date: str) -> pd.DataFrame:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
     base = pd.read_excel(BASE_TABLE_PATH)
-    base_required = {"主体ID", "品类"}
-    missing_base = sorted(base_required - set(base.columns))
+    base_id_column = "主体ID" if "主体ID" in base.columns else "商品ID" if "商品ID" in base.columns else None
+    missing_base = ["品类"] if "品类" not in base.columns else []
+    if base_id_column is None:
+        missing_base.insert(0, "主体ID/商品ID")
     if missing_base:
         raise SystemExit(f"[ERROR] 基础表缺少字段: {', '.join(missing_base)}")
 
-    keep_cols = [c for c in ["主体ID", "产品", "品类", "细类", "子类", "二级分类"] if c in base.columns]
+    keep_cols = [c for c in [base_id_column, "主体名称", "产品", "商品名称", "品类", "细类", "子类", "二级分类"] if c in base.columns]
     base = base[keep_cols].copy()
+    if "主体名称" not in base.columns and "商品名称" in base.columns:
+        base["主体名称"] = base["商品名称"]
+    if base_id_column != "主体ID":
+        base = base.rename(columns={base_id_column: "主体ID"})
     df["主体ID_key"] = normalize_id(df["主体ID"])
     base["主体ID_key"] = normalize_id(base["主体ID"])
     merged = df.merge(base.drop(columns=["主体ID"]), how="left", on="主体ID_key")
