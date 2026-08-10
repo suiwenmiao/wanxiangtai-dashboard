@@ -15,7 +15,7 @@
 
     <section class="daily-section">
       <h3>一、核心结论</h3>
-      <ol class="daily-insights"><li v-for="line in insightLines" :key="line">{{ line }}</li></ol>
+      <ol class="daily-insights"><li v-for="(line, index) in emphasizedInsightLines" :key="index"><template v-for="(part, partIndex) in line" :key="partIndex"><strong v-if="part.tone" :class="`daily-insight-${part.tone}`">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template></li></ol>
     </section>
 
     <section class="daily-section">
@@ -23,7 +23,7 @@
       <div class="daily-kpis"><article v-for="card in kpiCards" :key="card.label" class="daily-kpi"><div>{{ card.label }}</div><strong>{{ card.value }}</strong><em :class="changeTone(card.change, card.direction)">{{ formatChange(card.change) }} 环比</em></article></div>
     </section>
 
-    <ReportTable title="三、总体指标日环比" :headers="['指标', '今日', '昨日', '日环比']" :rows="overallRows" />
+    <ReportTable title="三、核心指标日环比" :headers="['指标', '今日', '昨日', '日环比']" :rows="overallRows" />
     <ReportTable title="四、场景维度" :headers="['场景', '今日花费', '昨日花费', '花费环比', '今日GMV', '昨日GMV', 'GMV环比', '今日ROI', '昨日ROI']" :rows="scenarioRows" />
     <ReportTable title="五、细类维度" :headers="['细类', '今日花费', '昨日花费', '花费环比', '今日GMV', '昨日GMV', 'GMV环比', '今日笔数', '今日ROI', '昨日ROI']" :rows="subCategoryRows" />
     <ReportTable title="六、计划维度" subtitle="按今日 GMV 排序，含投放动作" :headers="['计划（动作）', '今日花费', '昨日花费', '花费环比', '今日GMV', '昨日GMV', 'GMV环比', '今日ROI', '昨日ROI', 'ROI变化']" :rows="planRows" :loading="planLoading" />
@@ -53,27 +53,25 @@ const currentSubCategory = computed(() => compareRows(aggregateDimension(props.p
 const kpiCards = computed(() => [
   card("总花费", money(today.value.cost), pct(today.value.cost, yesterday.value.cost), "cost"),
   card("总成交金额 GMV", money(today.value.totalSales), pct(today.value.totalSales, yesterday.value.totalSales), "positive"),
-  card("总成交笔数", number(today.value.orders), pct(today.value.orders, yesterday.value.orders), "positive"),
   card("直接 ROI", ratio(today.value.directSales, today.value.cost), pct(ratio(today.value.directSales, today.value.cost), ratio(yesterday.value.directSales, yesterday.value.cost)), "positive", true),
   card("总 ROI", ratio(today.value.totalSales, today.value.cost), pct(ratio(today.value.totalSales, today.value.cost), ratio(yesterday.value.totalSales, yesterday.value.cost)), "positive", true),
   card("平均点击花费 CPC", money(ratio(today.value.cost, today.value.clicks), 2), pct(ratio(today.value.cost, today.value.clicks), ratio(yesterday.value.cost, yesterday.value.clicks)), "cost"),
   card("点击率 CTR", percent(ratio(today.value.clicks, today.value.impressions)), pct(ratio(today.value.clicks, today.value.impressions), ratio(yesterday.value.clicks, yesterday.value.impressions)), "positive"),
   card("点击转化率 CVR", percent(ratio(today.value.orders, today.value.clicks)), pct(ratio(today.value.orders, today.value.clicks), ratio(yesterday.value.orders, yesterday.value.clicks)), "positive"),
+  card("加购率", percent(ratio(today.value.carts, today.value.clicks)), pct(ratio(today.value.carts, today.value.clicks), ratio(yesterday.value.carts, yesterday.value.clicks)), "positive"),
 ]);
 
 const overallRows = computed(() => {
   const t = today.value, p = yesterday.value;
   return [
-    row("总成交金额（GMV）", money(t.totalSales), money(p.totalSales), pct(t.totalSales, p.totalSales), "positive"), row("成交笔数", number(t.orders), number(p.orders), pct(t.orders, p.orders), "positive"),
-    row("投入产出比 ROI", ratio(t.totalSales, t.cost).toFixed(2), ratio(p.totalSales, p.cost).toFixed(2), pct(ratio(t.totalSales, t.cost), ratio(p.totalSales, p.cost)), "positive", true),
+    row("总花费", money(t.cost), money(p.cost), pct(t.cost, p.cost), "cost"),
+    row("总成交金额（GMV）", money(t.totalSales), money(p.totalSales), pct(t.totalSales, p.totalSales), "positive"),
     row("直接 ROI", ratio(t.directSales, t.cost).toFixed(2), ratio(p.directSales, p.cost).toFixed(2), pct(ratio(t.directSales, t.cost), ratio(p.directSales, p.cost)), "positive", true),
-    row("总成交成本 CPA", money(ratio(t.cost, t.orders)), money(ratio(p.cost, p.orders)), pct(ratio(t.cost, t.orders), ratio(p.cost, p.orders)), "cost"), row("总花费", money(t.cost), money(p.cost), pct(t.cost, p.cost), "cost"),
-    row("展现量", number(t.impressions), number(p.impressions), pct(t.impressions, p.impressions), "cost"), row("点击量", number(t.clicks), number(p.clicks), pct(t.clicks, p.clicks), "positive"),
-    row("点击率 CTR", percent(ratio(t.clicks, t.impressions)), percent(ratio(p.clicks, p.impressions)), pct(ratio(t.clicks, t.impressions), ratio(p.clicks, p.impressions)), "positive"),
+    row("总 ROI", ratio(t.totalSales, t.cost).toFixed(2), ratio(p.totalSales, p.cost).toFixed(2), pct(ratio(t.totalSales, t.cost), ratio(p.totalSales, p.cost)), "positive", true),
     row("平均点击花费 CPC", money(ratio(t.cost, t.clicks), 2), money(ratio(p.cost, p.clicks), 2), pct(ratio(t.cost, t.clicks), ratio(p.cost, p.clicks)), "cost"),
+    row("点击率 CTR", percent(ratio(t.clicks, t.impressions)), percent(ratio(p.clicks, p.impressions)), pct(ratio(t.clicks, t.impressions), ratio(p.clicks, p.impressions)), "positive"),
     row("点击转化率 CVR", percent(ratio(t.orders, t.clicks)), percent(ratio(p.orders, p.clicks)), pct(ratio(t.orders, t.clicks), ratio(p.orders, p.clicks)), "positive"),
-    row("总购物车数", number(t.carts), number(p.carts), pct(t.carts, p.carts), "positive"), row("加购率", percent(ratio(t.carts, t.clicks)), percent(ratio(p.carts, p.clicks)), pct(ratio(t.carts, t.clicks), ratio(p.carts, p.clicks)), "positive"),
-    row("总收藏数", number(t.favorites), number(p.favorites), pct(t.favorites, p.favorites), "positive"),
+    row("加购率", percent(ratio(t.carts, t.clicks)), percent(ratio(p.carts, p.clicks)), pct(ratio(t.carts, t.clicks), ratio(p.carts, p.clicks)), "positive"),
   ];
 });
 const scenarioRows = computed(() => currentScenario.value.map(item => tableRow(item.name, item, false)));
@@ -115,6 +113,7 @@ const insightLines = computed(() => {
     `蓄水指标：总收藏 ${number(t.favorites)}（${formatChange(pct(t.favorites, p.favorites))}）、总购物车 ${number(t.carts)}（${formatChange(pct(t.carts, p.carts))}）、加购率 ${percent(ratio(t.carts, t.clicks))}（${formatChange(pct(ratio(t.carts, t.clicks), ratio(p.carts, p.clicks)))}）、收藏加购合计 ${number(t.favCart)}（${formatChange(pct(t.favCart, p.favCart))}）——蓄水侧${wateringDirection}。`,
   ];
 });
+const emphasizedInsightLines = computed(() => insightLines.value.map(emphasize));
 
 const ReportTable = defineComponent({
   props: { title: String, subtitle: String, headers: Array, rows: Array, loading: Boolean },
@@ -159,6 +158,20 @@ function money(value, digits = 0) { return `¥${Number(value || 0).toLocaleStrin
 function number(value) { return Number(value || 0).toLocaleString("zh-CN", { maximumFractionDigits: 0 }); }
 function percent(value) { return `${(Number(value || 0) * 100).toFixed(2)}%`; }
 function formatChange(value) { if (value == null) return "新增"; return `${value >= 0 ? "↑" : "↓"}${Math.abs(value * 100).toFixed(1)}%`; }
+function emphasize(text) {
+  const pattern = /(整体|场景结构|计划加减法|细类格局|平台撬动|蓄水指标|GMV[^，；。]*|ROI[^，；。]*|加购率[^，；。]*|新增\s+\d+\s+个|加投\s+\d+\s*\/\s*减投\s+\d+)/g;
+  const parts = [];
+  let lastIndex = 0;
+  for (const match of text.matchAll(pattern)) {
+    if (match.index > lastIndex) parts.push({ text: text.slice(lastIndex, match.index) });
+    const value = match[0];
+    const label = /^(整体|场景结构|计划加减法|细类格局|平台撬动|蓄水指标)$/.test(value);
+    parts.push({ text: value, tone: label ? "label" : "metric" });
+    lastIndex = match.index + value.length;
+  }
+  if (lastIndex < text.length) parts.push({ text: text.slice(lastIndex) });
+  return parts;
+}
 function changeTone(value, direction) { if (value == null || Math.abs(value) < 0.00001) return "daily-flat"; const good = direction === "cost" ? value < 0 : value > 0; return good ? "daily-good" : "daily-bad"; }
 function addDays(date, days) { const [year, month, day] = date.split("-").map(Number); const result = new Date(Date.UTC(year, month - 1, day + days)); return result.toISOString().slice(0, 10); }
 function base64Bytes(value) { return Uint8Array.from(atob(value), char => char.charCodeAt(0)); }

@@ -21,13 +21,15 @@
           <button :class="{ active: tab === 'dashboard' }" @click="selectTab('dashboard')">品类看板</button>
           <button :class="{ active: tab === 'product' }" @click="selectTab('product')">商品主体</button>
           <button :class="{ active: tab === 'daily' }" @click="selectTab('daily')">投放日报</button>
+          <button :class="{ active: tab === 'weekly' }" @click="selectTab('weekly')">投放周报</button>
+          <button :class="{ active: tab === 'monthly' }" @click="selectTab('monthly')">投放月报</button>
           <button :class="{ active: tab === 'creative' }" @click="selectTab('creative')">素材看板</button>
         </nav>
         <div class="status-pill">{{ filtered.length }} 条记录</div>
       </div>
     </div>
 
-    <div v-if="tab !== 'creative' && tab !== 'daily'" class="filter-bar">
+    <div v-if="tab !== 'creative' && tab !== 'daily' && tab !== 'weekly' && tab !== 'monthly'" class="filter-bar">
       <div class="filter-group">
         <label>开始日期</label>
         <input v-model="startDate" type="date" :min="payload.dateMin" :max="payload.dateMax" />
@@ -38,10 +40,16 @@
       </div>
       <div class="filter-group">
         <label>品类</label>
-        <select v-model="category">
-          <option value="all">全部品类</option>
-          <option v-for="item in payload.categories" :key="item" :value="item">{{ item }}</option>
-        </select>
+        <details ref="categoryPicker" class="multi-picker">
+          <summary>{{ selectedCategories.length ? `已选 ${selectedCategories.length} 个品类` : "全部品类" }}</summary>
+          <div class="multi-picker-menu">
+            <label v-for="item in payload.categories" :key="item" class="multi-option">
+              <input v-model="selectedCategories" type="checkbox" :value="item" />
+              <span>{{ item }}</span>
+            </label>
+            <button class="picker-done" type="button" @click="closeCategoryPicker">完成</button>
+          </div>
+        </details>
       </div>
       <div style="display:flex;gap:8px;margin-left:auto;flex-wrap:wrap;">
         <button class="btn-quick" :class="{ active: quickDays === 1 }" @click="setQuickRange(1)">今天</button>
@@ -53,9 +61,11 @@
       <div v-if="prevLabel" class="huanbi-label">{{ prevLabel }}</div>
     </div>
 
-    <DashboardPage v-if="tab === 'dashboard'" :payload="payload" :filtered="filtered" :prevFiltered="prevFiltered" :category="category" :allSubCats="subCategoryFiltered" />
+    <DashboardPage v-if="tab === 'dashboard'" :payload="payload" :filtered="filtered" :prevFiltered="prevFiltered" :category="selectedCategories" :allSubCats="subCategoryFiltered" />
     <ProductPage   v-if="tab === 'product'"   :payload="payload" :filtered="filtered" :prevFiltered="prevFiltered" :crypto-key="cryptoKey" />
     <DailyReportPage v-if="tab === 'daily'" :payload="payload" :crypto-key="cryptoKey" />
+    <WeeklyReportPage v-if="tab === 'weekly'" key="weekly" :payload="payload" :crypto-key="cryptoKey" />
+    <WeeklyReportPage v-if="tab === 'monthly'" key="monthly" :payload="payload" :crypto-key="cryptoKey" period="month" />
     <CreativePage  v-if="tab === 'creative'" :crypto-key="cryptoKey" />
   </main>
 </template>
@@ -65,6 +75,7 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
 import DashboardPage from "./components/DashboardPage.vue";
 import ProductPage from "./components/ProductPage.vue";
 import DailyReportPage from "./components/DailyReportPage.vue";
+import WeeklyReportPage from "./components/WeeklyReportPage.vue";
 import CreativePage from "./components/CreativePage.vue";
 const payload = ref(null);
 const cryptoKey = shallowRef(null);
@@ -74,14 +85,15 @@ const authError = ref("");
 const tab = ref(tabFromHash());
 const startDate = ref("");
 const endDate = ref("");
-const category = ref("all");
+const selectedCategories = ref([]);
+const categoryPicker = ref(null);
 const quickDays = ref(1);
 
 const filtered = computed(() =>
   (payload.value?.records || []).filter(r => {
     if (startDate.value && r.date < startDate.value) return false;
     if (endDate.value && r.date > endDate.value) return false;
-    if (category.value !== "all" && r.category !== category.value) return false;
+    if (selectedCategories.value.length && !selectedCategories.value.includes(r.category)) return false;
     return true;
   })
 );
@@ -90,7 +102,7 @@ const subCategoryFiltered = computed(() =>
   (payload.value?.subCategoryRecords || []).filter(r => {
     if (startDate.value && r.date < startDate.value) return false;
     if (endDate.value && r.date > endDate.value) return false;
-    if (category.value !== "all" && r.category !== category.value) return false;
+    if (selectedCategories.value.length && !selectedCategories.value.includes(r.category)) return false;
     return true;
   })
 );
@@ -119,7 +131,7 @@ const prevFiltered = computed(() => {
   return (payload.value?.records || []).filter(r => {
     if (r.date < prevStart.value) return false;
     if (r.date > prevEnd.value) return false;
-    if (category.value !== "all" && r.category !== category.value) return false;
+    if (selectedCategories.value.length && !selectedCategories.value.includes(r.category)) return false;
     return true;
   });
 });
@@ -145,7 +157,7 @@ function setQuickRange(days) {
 
 function selectTab(nextTab) {
   tab.value = nextTab;
-  const hashMap = { creative: "#/creative", product: "#/product", daily: "#/daily", dashboard: "#/" };
+  const hashMap = { creative: "#/creative", product: "#/product", daily: "#/daily", weekly: "#/weekly", monthly: "#/monthly", dashboard: "#/" };
   history.replaceState(null, "", hashMap[nextTab] || "#/");
 }
 function syncTabFromHash() {
@@ -155,7 +167,15 @@ function tabFromHash() {
   if (location.hash === "#/creative") return "creative";
   if (location.hash === "#/product") return "product";
   if (location.hash === "#/daily") return "daily";
+  if (location.hash === "#/weekly") return "weekly";
+  if (location.hash === "#/monthly") return "monthly";
   return "dashboard";
+}
+function closeCategoryPicker() {
+  if (categoryPicker.value) categoryPicker.value.open = false;
+}
+function closeCategoryPickerOnOutside(event) {
+  if (categoryPicker.value && !categoryPicker.value.contains(event.target)) closeCategoryPicker();
 }
 function base64Bytes(value) {
   const binary = atob(value);
@@ -191,8 +211,14 @@ async function unlock() {
     unlocking.value = false;
   }
 }
-onMounted(() => window.addEventListener("hashchange", syncTabFromHash));
-onBeforeUnmount(() => window.removeEventListener("hashchange", syncTabFromHash));
+onMounted(() => {
+  window.addEventListener("hashchange", syncTabFromHash);
+  window.addEventListener("click", closeCategoryPickerOnOutside);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener("hashchange", syncTabFromHash);
+  window.removeEventListener("click", closeCategoryPickerOnOutside);
+});
 </script>
 <style scoped>
 .huanbi-label { font-size: 12px; color: #888; white-space: nowrap; padding: 6px 10px; background: #f0f2f5; border-radius: 4px; }

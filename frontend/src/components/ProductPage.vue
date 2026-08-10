@@ -272,7 +272,6 @@ const displaySubjects = computed(() => {
   // Compute from date-filtered records + subjectDateRecords
   const dates = new Set(props.filtered.map(r => r.date));
   const cats = new Set(props.filtered.map(r => r.category));
-  const isDtOnly = cats.size === 1 && cats.has("DT");
   const allCats = cats.size >= props.payload.categories.length;
   const isFullRange = dates.size >= props.payload.records.length;
 
@@ -286,7 +285,7 @@ const displaySubjects = computed(() => {
     if (!allCats && cats.size > 0) result = result.filter(s => cats.has(s.category));
     const sorted = result.map(s => ({ ...s, totalRoi: s.cost > 0 ? s.totalSales / s.cost : 0 }))
       .sort((a, b) => { const mul = sortDir.value==='desc'?-1:1; const va=a[sortField.value],vb=b[sortField.value]; return typeof va==='string'?(va||'').localeCompare(vb||'')*mul:((va||0)-(vb||0))*mul; });
-    return isDtOnly ? sorted.slice(0, 10) : sorted;
+    return sorted;
   }
 
   // Filter subjectDateRecords by selected dates
@@ -305,7 +304,7 @@ const displaySubjects = computed(() => {
   }).filter(Boolean);
 
   const sorted = result.sort((a, b) => { const mul=sortDir.value==='desc'?-1:1; const va=a[sortField.value],vb=b[sortField.value]; return typeof va==='string'?(va||'').localeCompare(vb||'')*mul:((va||0)-(vb||0))*mul; });
-  return isDtOnly ? sorted.slice(0, 10) : sorted;
+  return sorted;
 });
 
 const adviceWindows = computed(() => {
