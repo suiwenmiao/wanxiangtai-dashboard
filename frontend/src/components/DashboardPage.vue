@@ -1,35 +1,41 @@
 <template>
   <div>
+    <div class="analysis-view-switch" role="tablist" aria-label="投放分析视图">
+      <button type="button" :class="{ active: activeView === 'overview' }" @click="activeView = 'overview'">品类概览</button>
+      <button type="button" :class="{ active: activeView === 'subject' }" @click="activeView = 'subject'">商品主体</button>
+    </div>
+    <ProductPage v-if="activeView === 'subject'" :payload="payload" :filtered="filtered" :prev-filtered="prevFiltered" :crypto-key="cryptoKey" />
+    <template v-else>
     <!-- KPI -->
     <div class="kpi-row">
       <div class="kpi-card cost">
         <div class="kpi-label">花费</div>
-        <div class="kpi-value">¥{{ formatMoney(totals.cost) }}</div>
+        <div class="kpi-value" :title="exactMoney(totals.cost)">¥{{ formatMoney(totals.cost) }}</div>
         <div v-if="hb" class="kpi-change" :class="changeClass(hb.cost)"><span class="arrow">{{ hb.cost > 0 ? '↑' : hb.cost < 0 ? '↓' : '' }}</span>{{ hbText(hb.cost) }} 环比</div>
       </div>
       <div class="kpi-card sales">
         <div class="kpi-label">总成交金额</div>
-        <div class="kpi-value">¥{{ formatMoney(totals.totalSales) }}</div>
+        <div class="kpi-value" :title="exactMoney(totals.totalSales)">¥{{ formatMoney(totals.totalSales) }}</div>
         <div v-if="hb" class="kpi-change" :class="changeClass(hb.totalSales)"><span class="arrow">{{ hb.totalSales > 0 ? '↑' : hb.totalSales < 0 ? '↓' : '' }}</span>{{ hbText(hb.totalSales) }} 环比</div>
       </div>
       <div class="kpi-card ctr">
         <div class="kpi-label">点击率</div>
-        <div class="kpi-value">{{ formatPercent(totals.ctr) }}</div>
+        <div class="kpi-value" :title="exactPercent(totals.ctr)">{{ formatPercent(totals.ctr) }}</div>
         <div v-if="hb" class="kpi-change" :class="changeClass(hb.ctr)"><span class="arrow">{{ hb.ctr > 0 ? '↑' : hb.ctr < 0 ? '↓' : '' }}</span>{{ hb.ctr > 0 ? '+' : '' }}{{ (hb.ctr * 100).toFixed(2) }}pp 环比</div>
       </div>
       <div class="kpi-card droi">
         <div class="kpi-label">直接 ROI</div>
-        <div class="kpi-value">{{ totals.directRoi.toFixed(2) }}</div>
+        <div class="kpi-value" :title="exactRatio(totals.directRoi)">{{ totals.directRoi.toFixed(2) }}</div>
         <div v-if="hb" class="kpi-change" :class="changeClass(hb.directRoi)"><span class="arrow">{{ hb.directRoi > 0 ? '↑' : hb.directRoi < 0 ? '↓' : '' }}</span>{{ hb.directRoi > 0 ? '+' : '' }}{{ hb.directRoi.toFixed(2) }} 环比</div>
       </div>
       <div class="kpi-card troi">
         <div class="kpi-label">总 ROI</div>
-        <div class="kpi-value">{{ totals.totalRoi.toFixed(2) }}</div>
+        <div class="kpi-value" :title="exactRatio(totals.totalRoi)">{{ totals.totalRoi.toFixed(2) }}</div>
         <div v-if="hb" class="kpi-change" :class="changeClass(hb.totalRoi)"><span class="arrow">{{ hb.totalRoi > 0 ? '↑' : hb.totalRoi < 0 ? '↓' : '' }}</span>{{ hb.totalRoi > 0 ? '+' : '' }}{{ hb.totalRoi.toFixed(2) }} 环比</div>
       </div>
       <div class="kpi-card cpc">
         <div class="kpi-label">CPC</div>
-        <div class="kpi-value">¥{{ totals.cpc.toFixed(2) }}</div>
+        <div class="kpi-value" :title="exactMoney(totals.cpc)">¥{{ totals.cpc.toFixed(2) }}</div>
         <div v-if="hb" class="kpi-change" :class="changeClass(hb.cpc)"><span class="arrow">{{ hb.cpc > 0 ? '↑' : hb.cpc < 0 ? '↓' : '' }}</span>{{ hbText(hb.cpc) }} 环比</div>
       </div>
     </div>
@@ -111,17 +117,22 @@
         </tbody>
       </table></div>
     </div>
+    </template>
   </div>
 </template>
 
 <script setup>
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import EChart from "./EChart.vue";
+import ProductPage from "./ProductPage.vue";
 import { byDate, byCategory, formatMoney, formatPercent, sumMetrics } from "../utils/metrics";
 
-const props = defineProps({ payload: { type: Object, required: true }, filtered: { type: Array, required: true }, prevFiltered: { type: Array, default: [] }, category: String, allSubCats: { type: Array, default: () => [] } });
+const props = defineProps({ payload: { type: Object, required: true }, filtered: { type: Array, required: true }, prevFiltered: { type: Array, default: [] }, category: [String, Array], allSubCats: { type: Array, default: () => [] }, cryptoKey: { type: CryptoKey, required: true }, initialView: { type: String, default: "overview" } });
+const activeView = ref(props.initialView === "subject" ? "subject" : "overview");
 
-const selectedCategory = computed(() => props.category && props.category !== "all" ? props.category : null);
+const selectedCategory = computed(() => Array.isArray(props.category)
+  ? (props.category.length === 1 ? props.category[0] : null)
+  : (props.category && props.category !== "all" ? props.category : null));
 const totals = computed(() => sumMetrics(props.filtered));
 const prevTot = computed(() => props.prevFiltered.length ? sumMetrics(props.prevFiltered) : null);
 const dailyRows = computed(() => byDate(props.filtered));
@@ -150,6 +161,9 @@ const hb = computed(() => {
 });
 function changeClass(v) { if (v == null) return ''; return v > 0 ? 'up' : v < 0 ? 'down' : 'flat'; }
 function hbText(v) { if (v == null) return ''; return (v > 0 ? '+' : '') + v.toFixed(1) + '%'; }
+function exactMoney(v) { return `精确值：¥${Number(v || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`; }
+function exactPercent(v) { return `精确值：${(Number(v || 0) * 100).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}%`; }
+function exactRatio(v) { return `精确值：${Number(v || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`; }
 
 // Summary at top
 const summaryLines = computed(() => {

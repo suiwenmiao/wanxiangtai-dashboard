@@ -12,6 +12,7 @@ NUMERIC_COLS = [
     "点击量", "展现量", "总购物车数", "总收藏数", "总收藏加购数",
     "自然流量转化金额", "平台助推总成交", "补贴引导成交金额",
 ]
+TARGET_CATEGORIES = {"手机", "DT", "显示器"}
 
 
 def load_data() -> pd.DataFrame:
@@ -29,6 +30,8 @@ def load_data() -> pd.DataFrame:
     df["日期"] = pd.to_datetime(df["日期"]).dt.strftime("%Y-%m-%d")
     df["品类"] = df["品类"].fillna("其他")
     df["细类"] = df["细类"].fillna("其他")
+    # Keep the source workbook complete, but publish only the three dashboard categories.
+    df = df[df["品类"].isin(TARGET_CATEGORIES)].copy()
     for col, default in {
         "场景名字": "未分类",
         "计划ID": "",

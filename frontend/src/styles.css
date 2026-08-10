@@ -482,6 +482,119 @@ tbody tr:hover td { background: #eef1f8; }
 .matrix-hot { position: absolute; top: -6px; right: -3px; padding: 1px 4px; border-radius: 3px; color: #8c4b00; background: #ffc65a; font-size: 10px; font-weight: 700; }
 .matrix-empty { display: block; color: #c1c8d1; text-align: center; }
 
+/* ── Visual refresh ── */
+:root { color: #26364d; background: #f4f6f9; }
+body { background: #f4f6f9; color: #26364d; }
+.header {
+  background: #243b64;
+  border-radius: 8px;
+  padding: 20px 24px;
+  box-shadow: 0 5px 16px rgba(36, 59, 100, .16);
+}
+.header h1 { letter-spacing: .2px; }
+.tab-nav { background: rgba(255,255,255,.1); }
+.tab-nav button.active, .tab-nav button:hover { color: #243b64; }
+.status-pill { border-radius: 6px; background: rgba(255,255,255,.08); }
+.filter-bar, .panel-table, .chart-container, .kpi-card, .weekly-toolbar {
+  border: 1px solid #e3e8ef;
+  box-shadow: 0 2px 8px rgba(36, 59, 100, .05);
+}
+.filter-bar { padding: 14px 18px; background: #fff; }
+.chart-title { color: #263b5d; border-left-color: #3c6db4; }
+th { background: #edf2f7; color: #42536b; border-bottom-color: #d7e0ea; }
+td { color: #34445b; }
+tbody tr:nth-child(even) td { background: #fbfcfd; }
+tbody tr:hover td { background: #f0f5fb; }
+
+.daily-report { gap: 14px; max-width: 1480px; }
+.daily-report-header {
+  padding: 20px 24px;
+  border-radius: 8px;
+  background: #243b64;
+  box-shadow: 0 5px 16px rgba(36, 59, 100, .18);
+}
+.daily-report-header h2 { font-size: 23px; letter-spacing: .2px; }
+.daily-report-header p { color: #dbe7f7; }
+.daily-report-header .daily-report-legend { color: #b9cbe5; }
+.daily-report-filters label { color: #dbe7f7; }
+.daily-report-filters select, .daily-report-filters input { border-color: #b8c9df; }
+.daily-section {
+  padding: 16px 18px;
+  border: 1px solid #e1e7ef;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 2px 7px rgba(36, 59, 100, .04);
+}
+.daily-section h3 {
+  padding-left: 10px;
+  border-left-color: #3c6db4;
+  color: #263b5d;
+  font-size: 16px;
+}
+.daily-insights { gap: 7px; margin-top: 13px; color: #4d5e74; font-size: 13px; }
+.daily-insights li { padding: 7px 10px; border-radius: 5px; background: #f7f9fc; }
+.daily-insight-item { border-left: 4px solid #d9a441; }
+.daily-insight-item.green { border-left-color: #2f9b70; background: #f1faf5; }
+.daily-insight-item.red { border-left-color: #d35d5d; background: #fff5f4; }
+.daily-insight-item.yellow { border-left-color: #d9a441; background: #fffaf0; }
+.daily-insight-label { color: #2e5d9f; }
+.daily-insight-metric { color: #b06412; }
+.analysis-view-switch {
+  display: inline-flex;
+  gap: 2px;
+  margin-bottom: 14px;
+  padding: 3px;
+  border: 1px solid #dce3ec;
+  border-radius: 7px;
+  background: #edf2f7;
+}
+.analysis-view-switch button {
+  min-width: 96px;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #65748a;
+  font-size: 13px;
+  font-weight: 700;
+}
+.analysis-view-switch button.active {
+  background: #fff;
+  color: #2e5d9f;
+  box-shadow: 0 1px 3px rgba(36, 59, 100, .12);
+}
+.daily-kpis { gap: 10px; margin-top: 14px; }
+.daily-kpi {
+  min-height: 98px;
+  padding: 13px 15px;
+  border: 1px solid #e1e7ef;
+  border-radius: 7px;
+  background: #fbfcfe;
+  box-shadow: none;
+}
+.daily-kpi > div { color: #66758a; font-size: 12px; }
+.daily-kpi strong { margin-top: 7px; color: #253957; font-size: 22px; }
+.daily-kpi em { margin-top: 7px; font-size: 11px; }
+.daily-kpi:nth-child(1) { border-top: 3px solid #d97868; }
+.daily-kpi:nth-child(2) { border-top: 3px solid #3d9a83; }
+.daily-kpi:nth-child(3), .daily-kpi:nth-child(4) { border-top: 3px solid #4f78b7; }
+.daily-kpi:nth-child(5) { border-top: 3px solid #c89643; }
+.daily-kpi:nth-child(6) { border-top: 3px solid #3d9a83; }
+.daily-kpi:nth-child(7) { border-top: 3px solid #6b8fc4; }
+.daily-kpi:nth-child(8) { border-top: 3px solid #b17a46; }
+.daily-table-section { padding: 14px 0 0; }
+.daily-table-section .daily-heading-row { padding: 0 18px 12px; }
+.daily-table-wrap table { font-size: 12px; }
+.daily-table-wrap th, .daily-table-wrap td { padding: 9px 10px; }
+.daily-table-wrap th { background: #edf2f7; }
+
+@media (max-width: 768px) {
+  .daily-report-header { padding: 18px; }
+  .daily-section { padding: 14px; }
+  .daily-kpi { min-height: 88px; padding: 11px 12px; }
+  .daily-kpi strong { font-size: 19px; }
+}
+
 @media (max-width: 1024px) {
   .creative-grid { grid-template-columns: 1fr; }
   .creative-kpis { grid-template-columns: repeat(3, 1fr); }

@@ -18,8 +18,7 @@
       </div>
       <div class="header-right">
         <nav class="tab-nav">
-          <button :class="{ active: tab === 'dashboard' }" @click="selectTab('dashboard')">品类看板</button>
-          <button :class="{ active: tab === 'product' }" @click="selectTab('product')">商品主体</button>
+          <button :class="{ active: tab === 'dashboard' || tab === 'product' }" @click="selectTab('dashboard')">投放分析</button>
           <button :class="{ active: tab === 'daily' }" @click="selectTab('daily')">投放日报</button>
           <button :class="{ active: tab === 'weekly' }" @click="selectTab('weekly')">投放周报</button>
           <button :class="{ active: tab === 'monthly' }" @click="selectTab('monthly')">投放月报</button>
@@ -61,8 +60,7 @@
       <div v-if="prevLabel" class="huanbi-label">{{ prevLabel }}</div>
     </div>
 
-    <DashboardPage v-if="tab === 'dashboard'" :payload="payload" :filtered="filtered" :prevFiltered="prevFiltered" :category="selectedCategories" :allSubCats="subCategoryFiltered" />
-    <ProductPage   v-if="tab === 'product'"   :payload="payload" :filtered="filtered" :prevFiltered="prevFiltered" :crypto-key="cryptoKey" />
+    <DashboardPage v-if="tab === 'dashboard' || tab === 'product'" :payload="payload" :filtered="filtered" :prevFiltered="prevFiltered" :category="selectedCategories" :allSubCats="subCategoryFiltered" :crypto-key="cryptoKey" :initial-view="tab === 'product' ? 'subject' : 'overview'" />
     <DailyReportPage v-if="tab === 'daily'" :payload="payload" :crypto-key="cryptoKey" />
     <WeeklyReportPage v-if="tab === 'weekly'" key="weekly" :payload="payload" :crypto-key="cryptoKey" />
     <WeeklyReportPage v-if="tab === 'monthly'" key="monthly" :payload="payload" :crypto-key="cryptoKey" period="month" />
@@ -73,7 +71,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
 import DashboardPage from "./components/DashboardPage.vue";
-import ProductPage from "./components/ProductPage.vue";
 import DailyReportPage from "./components/DailyReportPage.vue";
 import WeeklyReportPage from "./components/WeeklyReportPage.vue";
 import CreativePage from "./components/CreativePage.vue";

@@ -48,7 +48,7 @@ function encrypt(payload) {
 }
 
 mkdirSync(publicDir, { recursive: true });
-for (const filename of ["creative-index.json", "creative-DT.json", "creative-手机.json", "creative-data.enc.json", "dashboard-data.enc.json", "product-details.enc.json", "mobile-audience-data.enc.json"]) {
+for (const filename of ["creative-data.enc.json", "dashboard-data.enc.json", "product-details.enc.json", "mobile-audience-data.enc.json", "creative-index.json", ...index.categories.map(category => `creative-${category}.json`)]) {
   rmSync(join(publicDir, filename), { force: true });
 }
 const encryptedPayloads = [

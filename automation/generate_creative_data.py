@@ -17,7 +17,7 @@ from config import BASE_TABLE_PATH, FRONTEND_DIR, REPORT_DIR
 PRIVATE_DATA_DIR = FRONTEND_DIR / "private-data"
 PUBLIC_DATA_DIR = FRONTEND_DIR / "public" / "data"
 INDEX_FILE = PRIVATE_DATA_DIR / "creative-index.json"
-DASHBOARD_CATEGORIES = ("手机", "DT")
+DASHBOARD_CATEGORIES = ("手机", "DT", "显示器")
 NUMERIC_COLS = [
     "展现量",
     "点击量",
@@ -302,7 +302,7 @@ def main() -> None:
         "categories": categories,
         "notes": [
             "数据来自万相台创意报表的素材粒度导出。",
-            "素材看板仅保留手机和 DT 品类。",
+            "素材看板仅保留手机、DT 和显示器品类。",
             "素材内容为图片链接时，会在本地素材看板直接展示缩略图。",
         ],
     }

@@ -15,7 +15,7 @@
 
     <section class="daily-section">
       <h3>一、核心结论</h3>
-      <ol class="daily-insights"><li v-for="(line, index) in emphasizedInsightLines" :key="index"><template v-for="(part, partIndex) in line" :key="partIndex"><strong v-if="part.tone" :class="`daily-insight-${part.tone}`">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template></li></ol>
+      <ol class="daily-insights"><li v-for="(line, index) in emphasizedInsightLines" :key="index" :class="`daily-insight-item ${line.tone}`"><template v-for="(part, partIndex) in line.parts" :key="partIndex"><strong v-if="part.tone" :class="`daily-insight-${part.tone}`">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template></li></ol>
     </section>
 
     <section class="daily-section">
@@ -27,7 +27,7 @@
     <ReportTable title="四、场景维度" :headers="['场景', '今日花费', '昨日花费', '花费环比', '今日GMV', '昨日GMV', 'GMV环比', '今日ROI', '昨日ROI']" :rows="scenarioRows" />
     <ReportTable title="五、细类维度" :headers="['细类', '今日花费', '昨日花费', '花费环比', '今日GMV', '昨日GMV', 'GMV环比', '今日笔数', '今日ROI', '昨日ROI']" :rows="subCategoryRows" />
     <ReportTable title="六、计划维度" subtitle="按今日 GMV 排序，含投放动作" :headers="['计划（动作）', '今日花费', '昨日花费', '花费环比', '今日GMV', '昨日GMV', 'GMV环比', '今日ROI', '昨日ROI', 'ROI变化']" :rows="planRows" :loading="planLoading" />
-    <ReportTable title="七、TOP 商品主体" subtitle="按今日 GMV，前 5" :headers="['商品（主体）', '今日GMV', '今日花费', 'ROI', '笔数']" :rows="productRows" />
+    <ReportTable title="七、商品主体" :subtitle="category === 'DT' ? '按今日 GMV，前 10' : '按今日 GMV，全部商品主体'" :headers="['商品（主体）', '今日GMV', '今日花费', 'ROI', '笔数']" :rows="productRows" />
     <ReportTable title="八、平台撬动贡献" subtitle="GMV 内部组成，不额外累加" :headers="['来源', '今日金额', '昨日金额', '日环比', '占今日GMV比']" :rows="platformRows" />
   </div>
 </template>
@@ -80,7 +80,11 @@ const planRows = computed(() => comparePlans().sort((a, b) => b.current.totalSal
   const costChange = pct(item.current.cost, item.previous.cost); const roiNow = ratio(item.current.totalSales, item.current.cost); const roiPrev = ratio(item.previous.totalSales, item.previous.cost);
   return [{ value: item.name, badge: action(costChange), class: "daily-name-cell" }, money(item.current.cost), money(item.previous.cost), changeCell(costChange, "cost"), money(item.current.totalSales), money(item.previous.totalSales), changeCell(pct(item.current.totalSales, item.previous.totalSales), "positive"), roiNow.toFixed(2), roiPrev.toFixed(2), changeCell(roiNow - roiPrev, "positive", true)];
 }));
-const productRows = computed(() => compareProducts().sort((a, b) => b.current.totalSales - a.current.totalSales).slice(0, 5).map(item => [{ value: item.name, class: "daily-name-cell" }, money(item.current.totalSales), money(item.current.cost), ratio(item.current.totalSales, item.current.cost).toFixed(2), number(item.current.orders)]));
+const productRows = computed(() => {
+  const sorted = compareProducts().sort((a, b) => b.current.totalSales - a.current.totalSales);
+  const visible = category.value === "DT" ? sorted.slice(0, 10) : sorted;
+  return visible.map(item => [{ value: item.name, class: "daily-name-cell" }, money(item.current.totalSales), money(item.current.cost), ratio(item.current.totalSales, item.current.cost).toFixed(2), number(item.current.orders)]);
+});
 const platformRows = computed(() => {
   const t = today.value, p = yesterday.value;
   const labels = [["自然流量转化", "naturalSales"], ["平台助推成交", "platformSales"], ["补贴引导成交", "subsidySales"]];
@@ -113,7 +117,7 @@ const insightLines = computed(() => {
     `蓄水指标：总收藏 ${number(t.favorites)}（${formatChange(pct(t.favorites, p.favorites))}）、总购物车 ${number(t.carts)}（${formatChange(pct(t.carts, p.carts))}）、加购率 ${percent(ratio(t.carts, t.clicks))}（${formatChange(pct(ratio(t.carts, t.clicks), ratio(p.carts, p.clicks)))}）、收藏加购合计 ${number(t.favCart)}（${formatChange(pct(t.favCart, p.favCart))}）——蓄水侧${wateringDirection}。`,
   ];
 });
-const emphasizedInsightLines = computed(() => insightLines.value.map(emphasize));
+const emphasizedInsightLines = computed(() => insightLines.value.map(text => ({ parts: emphasize(text), tone: insightTone(text) })));
 
 const ReportTable = defineComponent({
   props: { title: String, subtitle: String, headers: Array, rows: Array, loading: Boolean },
@@ -158,6 +162,11 @@ function money(value, digits = 0) { return `¥${Number(value || 0).toLocaleStrin
 function number(value) { return Number(value || 0).toLocaleString("zh-CN", { maximumFractionDigits: 0 }); }
 function percent(value) { return `${(Number(value || 0) * 100).toFixed(2)}%`; }
 function formatChange(value) { if (value == null) return "新增"; return `${value >= 0 ? "↑" : "↓"}${Math.abs(value * 100).toFixed(1)}%`; }
+function insightTone(text) {
+  if (/(双升|效率提升|整体向好|性价比突出|ROI 最高)/.test(text)) return "green";
+  if (/(双降|效率承压|仍有承压|低效|减投|近 0 成交|近0成交|下降)/.test(text)) return "red";
+  return "yellow";
+}
 function emphasize(text) {
   const pattern = /(整体|场景结构|计划加减法|细类格局|平台撬动|蓄水指标|GMV[^，；。]*|ROI[^，；。]*|加购率[^，；。]*|新增\s+\d+\s+个|加投\s+\d+\s*\/\s*减投\s+\d+)/g;
   const parts = [];
