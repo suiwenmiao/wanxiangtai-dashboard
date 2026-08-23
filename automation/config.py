@@ -70,3 +70,15 @@ DOWNLOAD_LOG_FILE = _path_from_env("WORKBUDDY_DOWNLOAD_LOG", "/tmp/alimama_downl
 DAILY_LOG_FILE = _path_from_env("WORKBUDDY_DAILY_LOG", "/tmp/alimama_cron.log")
 
 AUTO_DEPLOY = os.environ.get("AUTO_DEPLOY", "0") == "1"
+
+# These subjects are always reported under the separate 来酷 category.
+CATEGORY_OVERRIDES = {
+    "1047814696910": "来酷",
+    "1049222295472": "来酷",
+    "918552132248": "来酷",
+    "967045582490": "来酷",
+    "1045978274860": "来酷",
+    "920636529891": "来酷",
+    "1067931924927": "来酷",
+}
+CATEGORY_ORDER = ("手机", "DT", "显示器", "来酷")
