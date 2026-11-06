@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -29,7 +30,24 @@ def report_range() -> tuple[str, str]:
 def main() -> None:
     start, end = report_range()
     output = REPORT_DIR / f"万相台创意报表_{start}_{end}.csv"
-    inputs = [path for path in sorted(REPORT_DIR.glob("万相台创意报表_*.csv")) if path != output]
+    reports = [path for path in sorted(REPORT_DIR.glob("万相台创意报表_*.csv")) if path != output]
+    cumulative = []
+    daily = []
+    for path in reports:
+        range_match = re.fullmatch(r"万相台创意报表_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.csv", path.name)
+        day_match = re.fullmatch(r"万相台创意报表_(\d{4}-\d{2}-\d{2})\.csv", path.name)
+        if range_match and range_match.group(1) == start and range_match.group(2) < end:
+            cumulative.append((range_match.group(2), path))
+        elif day_match and start <= day_match.group(1) <= end:
+            daily.append((day_match.group(1), path))
+
+    if cumulative:
+        latest_end, latest_report = max(cumulative, key=lambda item: item[0])
+        inputs = [latest_report] + [path for day, path in daily if day > latest_end]
+        print(f"增量续接累计报表: {latest_report.name}，仅追加 {len(inputs) - 1} 份后续日报")
+    else:
+        inputs = [path for path in reports if re.fullmatch(r"万相台创意报表_\d{4}-\d{2}-\d{2}\.csv", path.name)]
+
     frames: list[pd.DataFrame] = []
     for path in inputs:
         frame = read_csv(path)
